@@ -1,0 +1,9 @@
+include README.md
+include LICENSE
+include EXAMPLES.md
+include USAGE_GUIDE.md
+recursive-include zen *.py
+recursive-include components *.json *.py *.txt *.md
+recursive-include scripts *.py
+global-exclude __pycache__
+global-exclude *.py[co]

@@ -1,0 +1,73 @@
+# Prometheus alerting rules for FastAPI Industry Template
+groups:
+  - name: fastapi-alerts
+    rules:
+      # High error rate alert
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status_code=~"5.."}[5m]) / rate(http_requests_total[5m]) * 100 > 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }}% for the last 5 minutes"
+      
+      # High response time alert
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High response time detected"
+          description: "95th percentile response time is {{ $value }}s"
+      
+      # Application down alert
+      - alert: ApplicationDown
+        expr: up{job="fastapi-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FastAPI application is down"
+          description: "FastAPI application has been down for more than 1 minute"
+      
+      # High memory usage alert
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value }}%"
+      
+      # High CPU usage alert
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value }}%"
+      
+      # Database connection issues
+      - alert: DatabaseConnectionIssues
+        expr: database_connections_active > 50
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of database connections"
+          description: "Database has {{ $value }} active connections"
+      
+      # Low cache hit rate
+      - alert: LowCacheHitRate
+        expr: rate(cache_operations_total{result="hit"}[5m]) / rate(cache_operations_total[5m]) * 100 < 70
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value }}%"

@@ -8,7 +8,14 @@ import sys
 from pathlib import Path
 from zen.core.logger import get_logger, setup_logging
 from zen.core.installer import ComponentInstaller
-from zen.core.exceptions import InstallationError, ConfigurationError
+from zen.core.template_controller import TemplateController
+from zen.core.exceptions import (
+    InstallationError, 
+    ConfigurationError, 
+    TemplateError, 
+    TemplateNotFoundError, 
+    ProjectCreationError
+)
 
 logger = get_logger()
 
@@ -445,6 +452,302 @@ def remove(component_name, force):
         
     except Exception as e:
         logger.error(f"Failed to remove component: {e}")
+        sys.exit(1)
+
+@cli.command()
+@click.option("--template", "-t", help="Validate specific template")
+@click.option("--all", "-a", is_flag=True, help="Validate all templates")
+@click.option("--test", is_flag=True, help="Run comprehensive tests")
+@click.option("--fix", is_flag=True, help="Attempt to fix validation issues")
+def validate(template, all, test, fix):
+    """Validate templates and run tests
+    
+    Examples:
+      zenive validate --all                    # Validate all templates
+      zenive validate -t fastapi-minimal       # Validate specific template
+      zenive validate --all --test             # Run comprehensive tests
+    """
+    try:
+        from zen.core.template_validator import TemplateValidator, TemplateTestFramework
+        
+        controller = TemplateController()
+        validator = TemplateValidator(controller.registry)
+        test_framework = TemplateTestFramework(controller.registry)
+        
+        if all:
+            # Validate all templates
+            templates = controller.list_available_templates()
+            if not templates:
+                logger.info("No templates found to validate")
+                return
+            
+            logger.info(f"Validating {len(templates)} templates...")
+            logger.info("")
+            
+            total_errors = 0
+            total_warnings = 0
+            
+            for template_info in templates:
+                logger.info(f"📋 Validating {template_info.name}...")
+                
+                try:
+                    template_schema = controller.registry.get_template(template_info.name)
+                    
+                    if test:
+                        result = test_framework.test_template(template_info.name)
+                    else:
+                        result = validator.validate_template(template_schema)
+                    
+                    if result.is_valid:
+                        logger.success(f"✅ {template_info.name}: Valid")
+                    else:
+                        logger.error(f"❌ {template_info.name}: {len(result.errors)} errors")
+                    
+                    if result.warnings:
+                        logger.warning(f"⚠️  {template_info.name}: {len(result.warnings)} warnings")
+                    
+                    # Show details if there are issues
+                    if result.errors or result.warnings:
+                        for error in result.errors:
+                            logger.error(f"   • {error}")
+                        for warning in result.warnings:
+                            logger.warning(f"   • {warning}")
+                    
+                    if result.info:
+                        for info in result.info:
+                            logger.info(f"   ℹ️  {info}")
+                    
+                    total_errors += len(result.errors)
+                    total_warnings += len(result.warnings)
+                    
+                except Exception as e:
+                    logger.error(f"❌ {template_info.name}: Validation failed - {e}")
+                    total_errors += 1
+                
+                logger.info("")
+            
+            # Summary
+            logger.info("📊 Validation Summary:")
+            logger.info(f"   Templates: {len(templates)}")
+            logger.info(f"   Errors: {total_errors}")
+            logger.info(f"   Warnings: {total_warnings}")
+            
+            if total_errors > 0:
+                logger.error("❌ Validation failed with errors")
+                sys.exit(1)
+            elif total_warnings > 0:
+                logger.warning("⚠️  Validation completed with warnings")
+            else:
+                logger.success("✅ All templates are valid")
+        
+        elif template:
+            # Validate specific template
+            logger.info(f"Validating template: {template}")
+            
+            try:
+                template_schema = controller.registry.get_template(template)
+                
+                if test:
+                    result = test_framework.test_template(template)
+                else:
+                    result = validator.validate_template(template_schema)
+                
+                if result.is_valid:
+                    logger.success(f"✅ Template '{template}' is valid")
+                else:
+                    logger.error(f"❌ Template '{template}' has {len(result.errors)} errors")
+                
+                # Show all results
+                for error in result.errors:
+                    logger.error(f"   Error: {error}")
+                
+                for warning in result.warnings:
+                    logger.warning(f"   Warning: {warning}")
+                
+                for info in result.info:
+                    logger.info(f"   Info: {info}")
+                
+                if not result.is_valid:
+                    sys.exit(1)
+                    
+            except KeyError:
+                logger.error(f"Template '{template}' not found")
+                logger.info("Use 'zenive create --list-templates' to see available templates")
+                sys.exit(1)
+        
+        else:
+            logger.error("Please specify --template or --all")
+            logger.info("Use 'zenive validate --help' for usage information")
+            sys.exit(1)
+    
+    except Exception as e:
+        logger.error(f"Validation failed: {e}")
+        sys.exit(1)
+
+@cli.command()
+@click.argument("project_name", required=False)
+@click.option("--template", "-t", help="Template name to use")
+@click.option("--list-templates", is_flag=True, help="List available templates")
+@click.option("--template-info", help="Show detailed information about a template")
+@click.option("--no-deps", is_flag=True, help="Skip dependency installation")
+@click.option("--no-venv", is_flag=True, help="Skip virtual environment creation")
+def create(project_name, template, list_templates, template_info, no_deps, no_venv):
+    """Create a new project from template
+    
+    Examples:
+      zenive create my-api                    # Interactive template selection
+      zenive create my-api -t fastapi-minimal # Use specific template
+      zenive create --list-templates          # Show available templates
+      zenive create --template-info fastapi-moderate  # Show template details
+    """
+    try:
+        controller = TemplateController()
+        
+        # Handle list templates option
+        if list_templates:
+            templates = controller.list_available_templates()
+            if not templates:
+                logger.info("No templates available")
+                return
+            
+            logger.info("Available templates:")
+            logger.info("")
+            
+            from rich.table import Table
+            
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("Name", style="green", no_wrap=True)
+            table.add_column("Complexity", style="yellow", width=12)
+            table.add_column("Category", style="blue", width=12)
+            table.add_column("Description", style="white")
+            table.add_column("Files", style="dim", width=8)
+            
+            for template_info in templates:
+                table.add_row(
+                    template_info.name,
+                    template_info.complexity.title(),
+                    template_info.category.title(),
+                    template_info.description,
+                    str(template_info.file_count)
+                )
+            
+            logger.console.print(table)
+            return
+        
+        # Handle template info option
+        if template_info:
+            try:
+                details = controller.get_template_details(template_info)
+                
+                logger.info(f"Template: {details.name} v{details.version}")
+                logger.info(f"Description: {details.description}")
+                logger.info(f"Complexity: {details.complexity}")
+                logger.info(f"Category: {details.category}")
+                logger.info(f"Python requires: {details.python_requires}")
+                
+                if details.extends:
+                    logger.info(f"Extends: {details.extends}")
+                
+                if details.author:
+                    logger.info(f"Author: {details.author}")
+                
+                logger.info(f"License: {details.license}")
+                
+                if details.keywords:
+                    logger.info(f"Keywords: {', '.join(details.keywords)}")
+                
+                logger.info("")
+                logger.info(f"Dependencies ({len(details.dependencies)}):")
+                for dep in details.dependencies:
+                    logger.info(f"  • {dep}")
+                
+                if details.dev_dependencies:
+                    logger.info(f"Development dependencies ({len(details.dev_dependencies)}):")
+                    for dep in details.dev_dependencies:
+                        logger.info(f"  • {dep}")
+                
+                logger.info("")
+                logger.info(f"Directories ({len(details.directories)}):")
+                for directory in details.directories:
+                    logger.info(f"  📁 {directory}")
+                
+                logger.info("")
+                logger.info(f"Files ({len(details.files)}):")
+                for file_name in details.files:
+                    logger.info(f"  📄 {file_name}")
+                
+                if details.template_vars:
+                    logger.info("")
+                    logger.info("Template variables:")
+                    for var_name, default_value in details.template_vars.items():
+                        logger.info(f"  {var_name}: {default_value}")
+                
+                return
+                
+            except KeyError:
+                logger.error(f"Template '{template_info}' not found")
+                logger.info("Use --list-templates to see available templates")
+                sys.exit(1)
+        
+        # Validate project name is provided for creation
+        if not project_name:
+            logger.error("Project name is required for project creation")
+            logger.info("Use 'zenive create --help' for usage information")
+            sys.exit(1)
+        
+        # Validate project name format
+        name_issues = controller.validate_project_name(project_name)
+        if name_issues:
+            logger.error("Invalid project name:")
+            for issue in name_issues:
+                logger.error(f"  • {issue}")
+            sys.exit(1)
+        
+        # Check for directory conflicts
+        if controller.check_project_directory_conflict(project_name):
+            logger.warning(f"Directory '{project_name}' already exists")
+            if not click.confirm("Continue and overwrite?", default=False):
+                logger.info("Project creation cancelled")
+                return
+        
+        # Create project with interactive or specified template
+        if template:
+            # Validate template exists
+            try:
+                controller.get_template_details(template)
+            except KeyError:
+                logger.error(f"Template '{template}' not found")
+                logger.info("Use --list-templates to see available templates")
+                sys.exit(1)
+        
+        # Create the project
+        result = controller.create_project_interactive(project_name, template)
+        
+        if not result.success:
+            logger.error(f"Project creation failed: {result.message}")
+            sys.exit(1)
+        
+    except TemplateNotFoundError as e:
+        logger.error(f"Template not found: {e.template_name}")
+        logger.info("Use --list-templates to see available templates")
+        sys.exit(1)
+    except ProjectCreationError as e:
+        logger.error(f"Project creation failed: {e.message}")
+        if e.project_name:
+            logger.info(f"Failed project: {e.project_name}")
+        if e.template_name:
+            logger.info(f"Template used: {e.template_name}")
+        sys.exit(1)
+    except TemplateError as e:
+        logger.error(f"Template system error: {e.message}")
+        if e.template_name:
+            logger.info(f"Template: {e.template_name}")
+        sys.exit(1)
+    except (InstallationError, ConfigurationError) as e:
+        logger.error(str(e))
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error during project creation: {e}")
         sys.exit(1)
 
 def _detect_existing_project_type():

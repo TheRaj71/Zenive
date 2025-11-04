@@ -1,0 +1,461 @@
+name: Security Scanning
+
+on:
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # Dependency vulnerability scanning
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit semgrep
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Run Safety check
+      run: |
+        safety check --json --output safety-report.json
+        safety check --short-report
+      continue-on-error: true
+    
+    - name: Run pip-audit
+      uses: pypa/gh-action-pip-audit@v1.0.8
+      with:
+        inputs: requirements.txt requirements-dev.txt
+        format: json
+        output: pip-audit-report.json
+      continue-on-error: true
+    
+    - name: Upload dependency scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: dependency-scan-results
+        path: |
+          safety-report.json
+          pip-audit-report.json
+
+  # Static Application Security Testing (SAST)
+  sast-scan:
+    name: Static Application Security Testing
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit semgrep
+    
+    - name: Run Bandit security scan
+      run: |
+        bandit -r app/ -f json -o bandit-report.json
+        bandit -r app/ -f txt
+      continue-on-error: true
+    
+    - name: Run Semgrep security scan
+      run: |
+        semgrep --config=auto --json --output=semgrep-report.json app/
+        semgrep --config=auto app/
+      continue-on-error: true
+    
+    - name: Upload SAST scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: sast-scan-results
+        path: |
+          bandit-report.json
+          semgrep-report.json
+
+  # Secret scanning
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Run TruffleHog secret scan
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified
+    
+    - name: Run GitLeaks secret scan
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # Container security scanning
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image for scanning
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./deployment/docker/Dockerfile
+        push: false
+        tags: {{project_name}}/api:security-scan
+        load: true
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '{{project_name}}/api:security-scan'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+    
+    - name: Run Grype vulnerability scanner
+      uses: anchore/scan-action@v3
+      id: grype-scan
+      with:
+        image: '{{project_name}}/api:security-scan'
+        format: sarif
+        output-file: grype-results.sarif
+      continue-on-error: true
+    
+    - name: Upload Grype scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: grype-results.sarif
+    
+    - name: Run Snyk container scan
+      uses: snyk/actions/docker@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        image: '{{project_name}}/api:security-scan'
+        args: --severity-threshold=high --file=deployment/docker/Dockerfile
+      continue-on-error: true
+
+  # Infrastructure security scanning
+  infrastructure-scan:
+    name: Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run tfsec (Terraform security scanner)
+      uses: aquasecurity/tfsec-action@v1.0.3
+      with:
+        working_directory: deployment/terraform
+        format: sarif
+        soft_fail: true
+    
+    - name: Upload tfsec scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: results.sarif
+    
+    - name: Run Checkov (Infrastructure as Code scanner)
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: deployment/
+        framework: terraform,kubernetes,dockerfile
+        output_format: sarif
+        output_file_path: checkov-results.sarif
+        soft_fail: true
+    
+    - name: Upload Checkov scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: checkov-results.sarif
+    
+    - name: Run Kube-score (Kubernetes security scanner)
+      run: |
+        wget https://github.com/zegl/kube-score/releases/latest/download/kube-score_linux_amd64.tar.gz
+        tar xzf kube-score_linux_amd64.tar.gz
+        ./kube-score score deployment/k8s/*.yaml > kube-score-report.txt
+      continue-on-error: true
+    
+    - name: Upload Kube-score results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: kube-score-results
+        path: kube-score-report.txt
+
+  # License compliance scanning
+  license-scan:
+    name: License Compliance Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pip-licenses licensecheck
+        pip install -r requirements.txt
+    
+    - name: Generate license report
+      run: |
+        pip-licenses --format=json --output-file=licenses.json
+        pip-licenses --format=plain-vertical > licenses.txt
+        licensecheck --zero
+      continue-on-error: true
+    
+    - name: Upload license scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: license-scan-results
+        path: |
+          licenses.json
+          licenses.txt
+
+  # OWASP ZAP Dynamic Application Security Testing (DAST)
+  dast-scan:
+    name: Dynamic Application Security Testing
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Set up test environment
+      run: |
+        cp .env.example .env.test
+        echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/test_db" >> .env.test
+        echo "REDIS_URL=redis://localhost:6379/0" >> .env.test
+        echo "ENVIRONMENT=testing" >> .env.test
+    
+    - name: Start application
+      run: |
+        export $(cat .env.test | xargs)
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+        sleep 15
+    
+    - name: Wait for application to be ready
+      run: |
+        timeout 60 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
+    
+    - name: Run OWASP ZAP baseline scan
+      uses: zaproxy/action-baseline@v0.7.0
+      with:
+        target: 'http://localhost:8000'
+        rules_file_name: '.zap/rules.tsv'
+        cmd_options: '-a -j'
+        allow_issue_writing: false
+    
+    - name: Run OWASP ZAP full scan
+      uses: zaproxy/action-full-scan@v0.7.0
+      with:
+        target: 'http://localhost:8000'
+        rules_file_name: '.zap/rules.tsv'
+        cmd_options: '-a -j'
+        allow_issue_writing: false
+      continue-on-error: true
+
+  # Security report aggregation
+  security-report:
+    name: Security Report
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, sast-scan, secret-scan, container-scan, infrastructure-scan, license-scan]
+    if: always()
+    
+    steps:
+    - name: Download all scan results
+      uses: actions/download-artifact@v3
+    
+    - name: Generate security summary
+      run: |
+        echo "# Security Scan Summary" > security-summary.md
+        echo "Generated on: $(date)" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        echo "## Scan Results" >> security-summary.md
+        echo "- Dependency Scan: ${{ needs.dependency-scan.result }}" >> security-summary.md
+        echo "- SAST Scan: ${{ needs.sast-scan.result }}" >> security-summary.md
+        echo "- Secret Scan: ${{ needs.secret-scan.result }}" >> security-summary.md
+        echo "- Container Scan: ${{ needs.container-scan.result }}" >> security-summary.md
+        echo "- Infrastructure Scan: ${{ needs.infrastructure-scan.result }}" >> security-summary.md
+        echo "- License Scan: ${{ needs.license-scan.result }}" >> security-summary.md
+        
+        echo "" >> security-summary.md
+        echo "## Recommendations" >> security-summary.md
+        echo "1. Review all high and critical severity findings" >> security-summary.md
+        echo "2. Update dependencies with known vulnerabilities" >> security-summary.md
+        echo "3. Fix any secrets detected in the codebase" >> security-summary.md
+        echo "4. Address container security issues" >> security-summary.md
+        echo "5. Resolve infrastructure misconfigurations" >> security-summary.md
+    
+    - name: Upload security summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-summary
+        path: security-summary.md
+    
+    - name: Notify security team
+      if: |
+        needs.dependency-scan.result == 'failure' || 
+        needs.sast-scan.result == 'failure' || 
+        needs.container-scan.result == 'failure'
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: '#security'
+        text: |
+          🚨 Security scan failures detected in ${{ github.repository }}
+          
+          Failed scans:
+          - Dependency: ${{ needs.dependency-scan.result }}
+          - SAST: ${{ needs.sast-scan.result }}
+          - Container: ${{ needs.container-scan.result }}
+          
+          Please review the security findings immediately.
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Create security issue if critical vulnerabilities found
+  create-security-issue:
+    name: Create Security Issue
+    runs-on: ubuntu-latest
+    needs: [security-report]
+    if: |
+      always() && 
+      (needs.dependency-scan.result == 'failure' || 
+       needs.sast-scan.result == 'failure' || 
+       needs.container-scan.result == 'failure')
+    
+    steps:
+    - name: Create security issue
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const title = `Security vulnerabilities detected - ${new Date().toISOString().split('T')[0]}`;
+          const body = `
+          ## Security Scan Results
+          
+          Critical security vulnerabilities have been detected in the latest security scan.
+          
+          ### Failed Scans
+          - Dependency Scan: ${{ needs.dependency-scan.result }}
+          - SAST Scan: ${{ needs.sast-scan.result }}
+          - Container Scan: ${{ needs.container-scan.result }}
+          
+          ### Action Required
+          1. Review the scan results in the GitHub Actions artifacts
+          2. Prioritize fixing critical and high severity issues
+          3. Update dependencies and fix code issues
+          4. Re-run security scans to verify fixes
+          
+          ### Scan Details
+          - Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - Commit: ${{ github.sha }}
+          - Branch: ${{ github.ref }}
+          
+          This issue was automatically created by the security scanning workflow.
+          `;
+          
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: title,
+            body: body,
+            labels: ['security', 'critical', 'automated']
+          });

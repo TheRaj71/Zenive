@@ -2,7 +2,7 @@
 zen - A component registry for discovering, installing, and managing reusable code components
 """
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 __author__ = "TheRaj71"
 __description__ = "A component registry for discovering, installing, and managing reusable code components"
 

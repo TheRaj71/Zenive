@@ -8,14 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Community standards documentation
-- Code of Conduct
-- Contributing guidelines
-- Security policy
-- GitHub issue and PR templates
 
 ### Changed
-- Updated LICENSE copyright year to 2025
 
 ### Deprecated
 
@@ -24,6 +18,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 ### Security
+
+## [1.1.1] - 2025-01-05
+
+### Added
+- Community standards documentation
+- Code of Conduct (Contributor Covenant 2.1)
+- Contributing guidelines with development setup
+- Security policy with vulnerability reporting
+- GitHub issue templates (bug reports, feature requests, component requests, documentation)
+- Pull request template with comprehensive checklist
+- Dependabot configuration for automated dependency updates
+- CHANGELOG.md for tracking releases
+
+### Changed
+- Updated LICENSE copyright year to 2025
+- Updated contact email to theraj714@zohomail.in
+- Improved project documentation structure
+
+### Fixed
+- Corrected email domain in all configuration files
 
 ## [1.0.0] - 2024-XX-XX
 

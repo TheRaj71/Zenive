@@ -227,8 +227,8 @@ zen add https://github.com/TheRaj71/Zenive/tree/main/components/jwt-auth
 
 ### Personal Collections
 ```bash
-zen add https://github.com/yourusername/my-components/tree/main/text-utils
-zen add https://github.com/yourusername/my-components/tree/main/config-loader
+zen add https://github.com/TheRaj71/my-components/tree/main/text-utils
+zen add https://github.com/TheRaj71/my-components/tree/main/config-loader
 ```
 
 ## 🔄 Development Workflow

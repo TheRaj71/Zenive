@@ -31,7 +31,7 @@ setup(
     name="zenive",
     version=get_version(),
     author="TheRaj71",
-    author_email="theraj71@example.com",
+    author_email="theraj714@zohomail.in",
     description="A component registry for discovering, installing, and managing reusable code components",
     long_description=long_description,
     long_description_content_type="text/markdown",

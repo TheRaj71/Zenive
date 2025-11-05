@@ -26,7 +26,17 @@ This component provides ready-to-use GitHub Actions workflows that cover common 
 
 ## Installation
 
-### Quick Start
+### Using zenive (Recommended)
+
+```bash
+# Install from GitHub repository
+zen add https://github.com/TheRaj71/Zenive/tree/main/components/github-actions-python
+
+# Or install from raw URL
+zen add https://raw.githubusercontent.com/TheRaj71/Zenive/main/components/github-actions-python/component.json
+```
+
+### Direct Installation
 
 ```bash
 # Install with default configuration

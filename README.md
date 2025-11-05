@@ -296,6 +296,17 @@ zen add https://github.com/yourusername/my-components/tree/main/config-loader
 }
 ```
 
+## 📚 Documentation
+
+For detailed documentation, see the [docs](./docs/) folder:
+
+- [Animation Features](./docs/ANIMATION_FEATURES.md) - Beautiful CLI animations and visual effects
+- [Usage Guide](./docs/USAGE_GUIDE.md) - Comprehensive usage instructions
+- [Examples](./docs/EXAMPLES.md) - Component examples and use cases
+- [API Reference](./docs/API_REFERENCE.md) - Complete API documentation
+- [Template Development](./docs/TEMPLATE_DEVELOPMENT.md) - Creating custom templates
+- [Troubleshooting](./docs/TROUBLESHOOTING.md) - Common issues and solutions
+
 ## 🤝 Contributing
 
 zen is open source. Contributions welcome!

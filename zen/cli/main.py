@@ -56,8 +56,8 @@ def init(project_name, force, minimal):
         # Full project structure for new projects
         _create_project_structure(project_path)
         
-        # Show success with banner
-        logger.show_banner("🎉 zen Project Initialized!", "Ready to install components")
+        # Show success with animated banner
+        logger.show_animated_banner("🎉 zen Project Initialized!", "Ready to install components")
         
         next_steps = """[cyan]Next steps:[/cyan]
   [dim]1.[/dim] cd into your project directory
@@ -104,11 +104,11 @@ def add(component_url, path, overwrite, dry_run, yes):
         
         installer = ComponentInstaller()
         
-        # Fetch component with spinner animation
+        # Fetch component with elegant connecting lines animation
         try:
             from zen.schemas.component import load_component_from_url
             
-            with logger.spinner(f"Fetching component from {component_url}", "dots"):
+            with logger.connection_loader(f"Fetching component from {component_url}"):
                 component = load_component_from_url(component_url)
             
             # Show beautiful component info
@@ -145,9 +145,12 @@ def add(component_url, path, overwrite, dry_run, yes):
         
         logger.info("")
         
-        # Install component with spinner
-        with logger.spinner("Installing component files and dependencies", "arc"):
+        # Install component with beautiful wave animation
+        with logger.wave_loader("Installing component files and dependencies"):
             result = installer.install_from_url(component_url, path, overwrite)
+        
+        # Show matrix transition effect before success
+        logger.show_matrix_transition(f"Component {result['component']} installed successfully!", 2.0)
         
         # Show beautiful success summary
         logger.show_success_summary(
@@ -409,6 +412,107 @@ def info(component_name):
         sys.exit(1)
 
 @cli.command()
+@click.option("--show", is_flag=True, help="Show current animation settings")
+@click.option("--disable-all", is_flag=True, help="Disable all animations")
+@click.option("--enable-all", is_flag=True, help="Enable all animations")
+@click.option("--minimal", is_flag=True, help="Enable minimal animations only")
+@click.option("--demo", is_flag=True, help="Show animation demo")
+@click.option("--reset", is_flag=True, help="Reset to default settings")
+def animations(show, disable_all, enable_all, minimal, demo, reset):
+    """Configure CLI animations and visual effects
+    
+    Examples:
+      zen animations --show           # Show current settings
+      zen animations --demo           # Show animation demo
+      zen animations --disable-all    # Disable all animations
+      zen animations --enable-all     # Enable all animations
+      zen animations --minimal        # Enable minimal animations
+      zen animations --reset          # Reset to defaults
+    """
+    try:
+        from zen.core.animation_config import get_animation_manager
+        
+        manager = get_animation_manager()
+        
+        if demo:
+            logger.info("🎨 Starting animation demo...")
+            try:
+                from zen.demo_animations import main as demo_main
+                demo_main()
+            except ImportError:
+                logger.error("Demo script not found")
+            return
+        
+        if reset:
+            manager.reset_to_defaults()
+            logger.success("✨ Animation settings reset to defaults")
+            return
+        
+        if disable_all:
+            manager.disable_all_animations()
+            logger.success("🚫 All animations disabled")
+            return
+        
+        if enable_all:
+            manager.enable_full_animations()
+            logger.celebrate("All animations enabled!")
+            return
+        
+        if minimal:
+            manager.enable_minimal_animations()
+            logger.success("⚡ Minimal animations enabled")
+            return
+        
+        if show:
+            config = manager.config
+            
+            # Create settings table
+            from rich.table import Table
+            
+            table = Table(title="🎨 Animation Settings", show_header=True, header_style="bold cyan")
+            table.add_column("Setting", style="yellow", no_wrap=True)
+            table.add_column("Value", style="white")
+            table.add_column("Description", style="dim")
+            
+            settings = [
+                ("enable_animations", config.enable_animations, "Master animation toggle"),
+                ("enable_connection_loader", config.enable_connection_loader, "Connection lines animation"),
+                ("enable_wave_loader", config.enable_wave_loader, "Wave loading animation"),
+                ("enable_pulse_loader", config.enable_pulse_loader, "Pulse loading animation"),
+                ("enable_elegant_borders", config.enable_elegant_borders, "Elegant border effects"),
+                ("enable_rainbow_text", config.enable_rainbow_text, "Rainbow colored text"),
+                ("enable_typewriter_effect", config.enable_typewriter_effect, "Typewriter text animation"),
+                ("connection_speed", f"{config.connection_speed}s", "Connection animation speed"),
+                ("wave_speed", f"{config.wave_speed}s", "Wave animation speed"),
+                ("pulse_speed", f"{config.pulse_speed}s", "Pulse animation speed"),
+                ("primary_color", config.primary_color, "Primary UI color"),
+                ("success_color", config.success_color, "Success message color"),
+            ]
+            
+            for setting, value, description in settings:
+                status = "✅" if value is True else "❌" if value is False else str(value)
+                table.add_row(setting, status, description)
+            
+            logger.console.print(table)
+            
+            logger.info("")
+            logger.info("💡 Use the following commands to modify settings:")
+            logger.info("  zen animations --disable-all  # Disable all animations")
+            logger.info("  zen animations --enable-all   # Enable all animations")
+            logger.info("  zen animations --minimal      # Enable minimal animations")
+            logger.info("  zen animations --demo         # Show animation demo")
+            
+            return
+        
+        # Default: show help
+        logger.info("Use 'zen animations --help' for available options")
+        logger.info("Try 'zen animations --demo' to see all animations!")
+        
+    except Exception as e:
+        logger.error(f"Failed to configure animations: {e}")
+        sys.exit(1)
+
+@cli.command()
 @click.argument("component_name")
 @click.option("--force", "-f", is_flag=True, help="Force removal without confirmation")
 def remove(component_name, force):
@@ -447,7 +551,7 @@ def remove(component_name, force):
         with open(config_path, 'w') as f:
             yaml.dump(config, f, default_flow_style=False, indent=2)
         
-        logger.success(f"✨ Removed component: {component_name}")
+        logger.celebrate(f"Component {component_name} removed successfully!")
         logger.info("💡 Consider manually removing files and cleaning up dependencies.")
         
     except Exception as e:
@@ -481,7 +585,7 @@ def validate(template, all, test, fix):
                 logger.info("No templates found to validate")
                 return
             
-            logger.info(f"Validating {len(templates)} templates...")
+            logger.show_elegant_border(f"Validating {len(templates)} templates", 40)
             logger.info("")
             
             total_errors = 0
@@ -538,7 +642,8 @@ def validate(template, all, test, fix):
             elif total_warnings > 0:
                 logger.warning("⚠️  Validation completed with warnings")
             else:
-                logger.success("✅ All templates are valid")
+                logger.celebrate("All templates are valid!")
+                logger.rainbow_text("🎉 VALIDATION SUCCESS 🎉")
         
         elif template:
             # Validate specific template

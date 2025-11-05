@@ -8,8 +8,6 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 10
-    reviewers:
-      - "TheRaj71"
     assignees:
       - "TheRaj71"
     commit-message:
@@ -24,8 +22,6 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 5
-    reviewers:
-      - "TheRaj71"
     assignees:
       - "TheRaj71"
     commit-message:

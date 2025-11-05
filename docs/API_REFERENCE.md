@@ -1,358 +1,320 @@
-# Template System API Reference
+# zen Component Registry API Reference
 
 ## Overview
 
-This document provides detailed API reference for the Zenive template system components. It covers all classes, methods, and functions available for programmatic use of the template system.
+This document provides detailed API reference for the zen component registry system. It covers all classes, methods, and functions available for programmatic use of the component installation and management system.
 
 ## Core Classes
 
-### TemplateSchema
+### ComponentSchema
 
-Pydantic model representing a template definition.
+Pydantic model representing a component definition.
 
 ```python
-from zen.schemas.template import TemplateSchema, TemplateFile
+from zen.schemas.component import ComponentSchema, ComponentFile
 
-class TemplateSchema(BaseModel):
+class ComponentSchema(BaseModel):
     name: str
     version: str
     description: str
-    category: str = "web"
-    complexity: str  # minimal, moderate, industry
-    extends: Optional[str] = None
+    category: str = "utils"
     dependencies: List[str] = []
     dev_dependencies: List[str] = []
-    files: List[TemplateFile] = []
-    directories: List[str] = []
+    files: List[ComponentFile] = []
     python_requires: str = ">=3.8"
-    template_vars: Dict[str, Any] = {}
     author: Optional[str] = None
     license: str = "MIT"
     keywords: List[str] = []
 ```
 
 **Fields:**
-- `name`: Unique template identifier
+- `name`: Unique component identifier
 - `version`: Semantic version string
 - `description`: Human-readable description
-- `category`: Template category (web, api, cli, etc.)
-- `complexity`: Complexity level (minimal, moderate, industry)
-- `extends`: Parent template name for inheritance
+- `category`: Component category (utils, auth, data, etc.)
 - `dependencies`: List of Python package dependencies
 - `dev_dependencies`: List of development dependencies
-- `files`: List of template files
-- `directories`: List of directories to create
+- `files`: List of component files
 - `python_requires`: Python version requirement
-- `template_vars`: Template variables for customization
-- `author`: Template author name
+- `author`: Component author name
 - `license`: License identifier
 - `keywords`: List of keywords for categorization
 
-### TemplateFile
+### ComponentFile
 
-Represents a file within a template.
+Represents a file within a component.
 
 ```python
-class TemplateFile(BaseModel):
+class ComponentFile(BaseModel):
     name: str
     path: str
     content: Optional[str] = None
     url: Optional[str] = None
     executable: bool = False
-    template_vars: Dict[str, Any] = {}
 ```
 
 **Fields:**
 - `name`: Display name of the file
-- `path`: Target path in the generated project
+- `path`: Target path in the project
 - `content`: Direct file content (optional)
 - `url`: URL to fetch content from (optional)
 - `executable`: Whether file should be executable
-- `template_vars`: File-specific template variables
 
-### TemplateRegistry
+### ComponentRegistry
 
-Manages template discovery, loading, and inheritance resolution.
+Manages component discovery, loading, and installation.
 
 ```python
-from zen.core.template_registry import TemplateRegistry
+from zen.core.component_registry import ComponentRegistry
 
-registry = TemplateRegistry()
+registry = ComponentRegistry()
 ```
 
 #### Methods
 
-##### `register_template(template: TemplateSchema) -> None`
+##### `register_component(component: ComponentSchema) -> None`
 
-Register a template in the registry.
+Register a component in the registry.
 
 **Parameters:**
-- `template`: TemplateSchema instance to register
+- `component`: ComponentSchema instance to register
 
 **Example:**
 ```python
-template = TemplateSchema(
-    name="my-template",
+component = ComponentSchema(
+    name="my-component",
     version="1.0.0",
-    description="My custom template"
+    description="My custom component"
 )
-registry.register_template(template)
+registry.register_component(component)
 ```
 
-##### `get_template(name: str) -> TemplateSchema`
+##### `get_component(name: str) -> ComponentSchema`
 
-Retrieve a template by name.
+Retrieve a component by name.
 
 **Parameters:**
-- `name`: Template name
+- `name`: Component name
 
 **Returns:**
-- TemplateSchema instance
+- ComponentSchema instance
 
 **Raises:**
-- `KeyError`: If template not found
+- `KeyError`: If component not found
 
 **Example:**
 ```python
-template = registry.get_template("fastapi-minimal")
+component = registry.get_component("email-validator")
 ```
 
-##### `list_templates() -> List[TemplateSchema]`
+##### `list_components() -> List[ComponentSchema]`
 
-Get all registered templates.
+Get all registered components.
 
 **Returns:**
-- List of TemplateSchema instances
+- List of ComponentSchema instances
 
 **Example:**
 ```python
-templates = registry.list_templates()
-for template in templates:
-    print(f"{template.name}: {template.description}")
+components = registry.list_components()
+for component in components:
+    print(f"{component.name}: {component.description}")
 ```
 
-##### `load_from_url(url: str) -> TemplateSchema`
+##### `load_from_url(url: str) -> ComponentSchema`
 
-Load template from URL.
+Load component from URL.
 
 **Parameters:**
-- `url`: URL to template.json file
+- `url`: URL to component.json file
 
 **Returns:**
-- TemplateSchema instance
+- ComponentSchema instance
 
 **Example:**
 ```python
-template = registry.load_from_url("https://example.com/template.json")
+component = registry.load_from_url("https://example.com/component.json")
 ```
 
-##### `resolve_inheritance(template: TemplateSchema) -> TemplateSchema`
+### ComponentInstaller
 
-Resolve template inheritance chain.
-
-**Parameters:**
-- `template`: Template with potential inheritance
-
-**Returns:**
-- Resolved template with merged properties
-
-**Example:**
-```python
-resolved = registry.resolve_inheritance(template)
-```
-
-### ProjectInitializer
-
-Handles project creation from templates.
+Handles component installation into projects.
 
 ```python
-from zen.core.project_initializer import ProjectInitializer
+from zen.core.component_installer import ComponentInstaller
 
-initializer = ProjectInitializer(registry)
+installer = ComponentInstaller(registry)
 ```
 
 #### Methods
 
-##### `create_project(project_name: str, template_name: str, **kwargs) -> ProjectResult`
+##### `install_component(component_url: str, **kwargs) -> InstallResult`
 
-Create a project from a template.
+Install a component from URL.
 
 **Parameters:**
-- `project_name`: Name of the project to create
-- `template_name`: Name of the template to use
-- `template_variables`: Dict of template variables (optional)
+- `component_url`: URL to component repository or component.json
+- `install_path`: Target installation path (optional)
 - `install_dependencies`: Whether to install dependencies (default: True)
-- `create_venv`: Whether to create virtual environment (default: True)
+- `overwrite`: Whether to overwrite existing files (default: False)
 
 **Returns:**
-- ProjectResult instance with creation details
+- InstallResult instance with installation details
 
 **Example:**
 ```python
-result = initializer.create_project(
-    project_name="my-api",
-    template_name="fastapi-minimal",
-    template_variables={"author": "John Doe"},
+result = installer.install_component(
+    component_url="https://github.com/user/component",
+    install_path="src/utils",
     install_dependencies=True
 )
 ```
 
-##### `validate_project_name(name: str) -> List[str]`
+##### `validate_component_url(url: str) -> List[str]`
 
-Validate project name format.
+Validate component URL format.
 
 **Parameters:**
-- `name`: Project name to validate
+- `url`: Component URL to validate
 
 **Returns:**
 - List of validation issues (empty if valid)
 
 **Example:**
 ```python
-issues = initializer.validate_project_name("my-project")
+issues = installer.validate_component_url("https://github.com/user/component")
 if not issues:
-    print("Valid project name")
+    print("Valid component URL")
 ```
 
-##### `check_project_directory_availability(name: str, target_dir: Optional[str] = None) -> bool`
+##### `check_installation_conflicts(component: ComponentSchema, install_path: str) -> List[str]`
 
-Check if project directory is available.
+Check for potential installation conflicts.
 
 **Parameters:**
-- `name`: Project name
-- `target_dir`: Target directory (optional, defaults to current)
+- `component`: Component to install
+- `install_path`: Target installation path
 
 **Returns:**
-- True if directory is available
+- List of potential conflicts
 
 **Example:**
 ```python
-available = initializer.check_project_directory_availability("my-project")
+conflicts = installer.check_installation_conflicts(component, "src/utils")
 ```
 
-### TemplateController
+### ComponentController
 
-High-level interface for template operations.
+High-level interface for component operations.
 
 ```python
-from zen.core.template_controller import TemplateController
+from zen.core.component_controller import ComponentController
 
-controller = TemplateController()
+controller = ComponentController()
 ```
 
 #### Methods
 
-##### `list_available_templates() -> List[TemplateInfo]`
+##### `list_installed_components() -> List[ComponentInfo]`
 
-Get list of available templates with basic information.
+Get list of installed components with basic information.
 
 **Returns:**
-- List of TemplateInfo named tuples
+- List of ComponentInfo named tuples
 
 **Example:**
 ```python
-templates = controller.list_available_templates()
-for template in templates:
-    print(f"{template.name} ({template.complexity}): {template.description}")
+components = controller.list_installed_components()
+for component in components:
+    print(f"{component.name} ({component.category}): {component.description}")
 ```
 
-##### `get_template_details(template_name: str) -> TemplateDetails`
+##### `get_component_details(component_name: str) -> ComponentDetails`
 
-Get detailed information about a template.
+Get detailed information about a component.
 
 **Parameters:**
-- `template_name`: Name of the template
+- `component_name`: Name of the component
 
 **Returns:**
-- TemplateDetails named tuple
+- ComponentDetails named tuple
 
 **Raises:**
-- `KeyError`: If template not found
+- `KeyError`: If component not found
 
 **Example:**
 ```python
-details = controller.get_template_details("fastapi-moderate")
+details = controller.get_component_details("email-validator")
 print(f"Dependencies: {details.dependencies}")
 ```
 
-##### `create_project_interactive(project_name: str, template_name: Optional[str] = None) -> ProjectResult`
+##### `install_component_interactive(component_url: str) -> InstallResult`
 
-Create project with interactive prompts.
+Install component with interactive prompts.
 
 **Parameters:**
-- `project_name`: Name of the project
-- `template_name`: Template name (optional, will prompt if not provided)
+- `component_url`: URL of the component to install
 
 **Returns:**
-- ProjectResult instance
+- InstallResult instance
 
 **Example:**
 ```python
-result = controller.create_project_interactive("my-api")
+result = controller.install_component_interactive("https://github.com/user/component")
 ```
 
 ## Validation Classes
 
-### TemplateValidator
+### ComponentValidator
 
-Validates template schemas and files.
+Validates component schemas and files.
 
 ```python
-from zen.core.template_validator import TemplateValidator, ValidationResult
+from zen.core.component_validator import ComponentValidator, ValidationResult
 
-validator = TemplateValidator(registry)
+validator = ComponentValidator(registry)
 ```
 
 #### Methods
 
-##### `validate_template(template: TemplateSchema, template_path: Optional[Path] = None) -> ValidationResult`
+##### `validate_component(component: ComponentSchema, component_path: Optional[Path] = None) -> ValidationResult`
 
-Validate a complete template.
+Validate a complete component.
 
 **Parameters:**
-- `template`: Template schema to validate
-- `template_path`: Optional path to template directory
+- `component`: Component schema to validate
+- `component_path`: Optional path to component directory
 
 **Returns:**
 - ValidationResult instance
 
 **Example:**
 ```python
-result = validator.validate_template(template)
+result = validator.validate_component(component)
 if result.is_valid:
-    print("Template is valid")
+    print("Component is valid")
 else:
     for error in result.errors:
         print(f"Error: {error}")
 ```
 
-##### `validate_schema(template: TemplateSchema) -> ValidationResult`
+##### `validate_schema(component: ComponentSchema) -> ValidationResult`
 
-Validate template schema structure.
+Validate component schema structure.
 
 **Parameters:**
-- `template`: Template schema
+- `component`: Component schema
 
 **Returns:**
 - ValidationResult instance
 
-##### `validate_inheritance(template: TemplateSchema) -> ValidationResult`
+##### `validate_component_files(component: ComponentSchema, component_path: Path) -> ValidationResult`
 
-Validate template inheritance.
-
-**Parameters:**
-- `template`: Template with inheritance
-
-**Returns:**
-- ValidationResult instance
-
-##### `validate_template_files(template: TemplateSchema, template_path: Path) -> ValidationResult`
-
-Validate template files exist and are accessible.
+Validate component files exist and are accessible.
 
 **Parameters:**
-- `template`: Template schema
-- `template_path`: Path to template directory
+- `component`: Component schema
+- `component_path`: Path to component directory
 
 **Returns:**
 - ValidationResult instance
@@ -374,278 +336,265 @@ class ValidationResult:
     def merge(self, other: 'ValidationResult') -> None
 ```
 
-### TemplateTestFramework
+### ComponentTestFramework
 
-Framework for testing templates.
+Framework for testing components.
 
 ```python
-from zen.core.template_validator import TemplateTestFramework
+from zen.core.component_validator import ComponentTestFramework
 
-test_framework = TemplateTestFramework(registry)
+test_framework = ComponentTestFramework(registry)
 ```
 
 #### Methods
 
-##### `test_template(template_name: str, template_path: Optional[Path] = None) -> ValidationResult`
+##### `test_component(component_name: str, component_path: Optional[Path] = None) -> ValidationResult`
 
-Test a template comprehensively.
+Test a component comprehensively.
 
 **Parameters:**
-- `template_name`: Name of template to test
-- `template_path`: Optional path to template directory
+- `component_name`: Name of component to test
+- `component_path`: Optional path to component directory
 
 **Returns:**
 - ValidationResult with test results
 
 **Example:**
 ```python
-result = test_framework.test_template("fastapi-minimal")
+result = test_framework.test_component("email-validator")
 ```
 
-##### `test_all_templates() -> Dict[str, ValidationResult]`
+##### `test_all_components() -> Dict[str, ValidationResult]`
 
-Test all templates in the registry.
+Test all components in the registry.
 
 **Returns:**
-- Dictionary mapping template names to test results
+- Dictionary mapping component names to test results
 
 **Example:**
 ```python
-results = test_framework.test_all_templates()
+results = test_framework.test_all_components()
 for name, result in results.items():
     print(f"{name}: {'✓' if result.is_valid else '✗'}")
 ```
 
 ## Utility Classes
 
-### TemplateIntegrityChecker
+### ComponentIntegrityChecker
 
-Checks template file integrity and consistency.
+Checks component file integrity and consistency.
 
 ```python
-from zen.core.template_utils import TemplateIntegrityChecker
+from zen.core.component_utils import ComponentIntegrityChecker
 
-checker = TemplateIntegrityChecker()
+checker = ComponentIntegrityChecker()
 ```
 
 #### Methods
 
-##### `check_template_integrity(template_name: str) -> ValidationResult`
+##### `check_component_integrity(component_name: str) -> ValidationResult`
 
-Check integrity of a specific template.
+Check integrity of a specific component.
 
 **Parameters:**
-- `template_name`: Name of template to check
+- `component_name`: Name of component to check
 
 **Returns:**
 - ValidationResult with integrity status
 
-##### `generate_template_checksums(template_name: str) -> Dict[str, str]`
+##### `generate_component_checksums(component_name: str) -> Dict[str, str]`
 
-Generate checksums for all template files.
+Generate checksums for all component files.
 
 **Parameters:**
-- `template_name`: Name of template
+- `component_name`: Name of component
 
 **Returns:**
 - Dictionary mapping file paths to checksums
 
-### TemplateDependencyAnalyzer
+### ComponentDependencyAnalyzer
 
-Analyzes template dependencies and conflicts.
+Analyzes component dependencies and conflicts.
 
 ```python
-from zen.core.template_utils import TemplateDependencyAnalyzer
+from zen.core.component_utils import ComponentDependencyAnalyzer
 
-analyzer = TemplateDependencyAnalyzer()
+analyzer = ComponentDependencyAnalyzer()
 ```
 
 #### Methods
 
-##### `analyze_template_dependencies(template_name: str) -> Dict[str, Any]`
+##### `analyze_component_dependencies(component_name: str) -> Dict[str, Any]`
 
-Analyze dependencies for a template.
+Analyze dependencies for a component.
 
 **Parameters:**
-- `template_name`: Name of template to analyze
+- `component_name`: Name of component to analyze
 
 **Returns:**
 - Dictionary with dependency analysis results
 
-##### `find_dependency_conflicts_between_templates() -> List[Dict[str, Any]]`
+##### `find_dependency_conflicts_between_components() -> List[Dict[str, Any]]`
 
-Find dependency conflicts between different templates.
+Find dependency conflicts between different components.
 
 **Returns:**
 - List of conflict descriptions
 
 ## Data Types
 
-### ProjectResult
+### InstallResult
 
-Result of project creation operation.
+Result of component installation operation.
 
 ```python
-class ProjectResult(NamedTuple):
-    project_name: str
-    project_path: Path
-    template_name: str
-    template_version: str
-    files_created: int
-    directories_created: int
-    dependencies_installed: bool
+class InstallResult(NamedTuple):
+    component_name: str
+    component_url: str
+    install_path: Path
+    component_version: str
+    files_installed: int
+    dependencies_added: int
     success: bool
     message: str
 ```
 
-### TemplateInfo
+### ComponentInfo
 
-Basic template information for display.
+Basic component information for display.
 
 ```python
-class TemplateInfo(NamedTuple):
+class ComponentInfo(NamedTuple):
     name: str
     version: str
     description: str
-    complexity: str
     category: str
+    install_path: str
     file_count: int
     dependency_count: int
 ```
 
-### TemplateDetails
+### ComponentDetails
 
-Detailed template information.
+Detailed component information.
 
 ```python
-class TemplateDetails(NamedTuple):
+class ComponentDetails(NamedTuple):
     name: str
     version: str
     description: str
-    complexity: str
     category: str
-    extends: Optional[str]
     dependencies: List[str]
     dev_dependencies: List[str]
-    directories: List[str]
     files: List[str]
-    template_vars: Dict[str, Any]
     python_requires: str
     author: Optional[str]
     license: str
     keywords: List[str]
+    install_path: str
+    installed_at: str
 ```
 
 ## Exceptions
 
-### Template System Exceptions
+### Component System Exceptions
 
-All template system exceptions inherit from `TemplateError`:
+All component system exceptions inherit from `ComponentError`:
 
 ```python
 from zen.core.exceptions import (
-    TemplateError,
-    TemplateNotFoundError,
-    TemplateInheritanceError,
-    ProjectCreationError,
-    TemplateValidationError,
-    TemplateVariableError
+    ComponentError,
+    ComponentNotFoundError,
+    ComponentInstallationError,
+    ComponentValidationError,
+    ComponentUrlError
 )
 ```
 
-#### TemplateError
+#### ComponentError
 
-Base exception for template system errors.
+Base exception for component system errors.
 
 **Attributes:**
 - `message`: Error message
-- `template_name`: Name of template (optional)
+- `component_name`: Name of component (optional)
 - `details`: Additional error details (optional)
 
-#### TemplateNotFoundError
+#### ComponentNotFoundError
 
-Raised when a template is not found in the registry.
-
-**Attributes:**
-- `template_name`: Name of the missing template
-
-#### TemplateInheritanceError
-
-Raised when template inheritance resolution fails.
+Raised when a component is not found.
 
 **Attributes:**
-- `template_name`: Name of template with inheritance issue
-- `parent_template`: Name of parent template (optional)
+- `component_name`: Name of the missing component
+- `component_url`: URL where component was expected (optional)
 
-#### ProjectCreationError
+#### ComponentInstallationError
 
-Raised when project creation from template fails.
-
-**Attributes:**
-- `project_name`: Name of project being created (optional)
-- `template_name`: Name of template being used (optional)
-
-#### TemplateValidationError
-
-Raised when template schema validation fails.
+Raised when component installation fails.
 
 **Attributes:**
-- `template_name`: Name of template with validation issues
+- `component_name`: Name of component being installed (optional)
+- `component_url`: URL of component being installed (optional)
+- `install_path`: Target installation path (optional)
+
+#### ComponentValidationError
+
+Raised when component schema validation fails.
+
+**Attributes:**
+- `component_name`: Name of component with validation issues
 - `validation_errors`: List of specific validation errors
 
-#### TemplateVariableError
+#### ComponentUrlError
 
-Raised when template variable validation or substitution fails.
+Raised when component URL is invalid or inaccessible.
 
 **Attributes:**
-- `template_name`: Name of template
-- `variable_name`: Name of problematic variable (optional)
+- `component_url`: The problematic URL
+- `error_type`: Type of URL error (invalid, not_found, access_denied, etc.)
 
 ## Usage Examples
 
-### Basic Template Usage
+### Basic Component Usage
 
 ```python
-from zen.core.template_registry import TemplateRegistry
-from zen.core.project_initializer import ProjectInitializer
+from zen.core.component_registry import ComponentRegistry
+from zen.core.component_installer import ComponentInstaller
 
 # Initialize components
-registry = TemplateRegistry()
-initializer = ProjectInitializer(registry)
+registry = ComponentRegistry()
+installer = ComponentInstaller(registry)
 
-# List available templates
-templates = registry.list_templates()
-print(f"Available templates: {[t.name for t in templates]}")
+# List installed components
+components = registry.list_components()
+print(f"Installed components: {[c.name for c in components]}")
 
-# Create a project
-result = initializer.create_project(
-    project_name="my-api",
-    template_name="fastapi-minimal",
-    template_variables={
-        "author": "John Doe",
-        "description": "My awesome API"
-    }
+# Install a component
+result = installer.install_component(
+    component_url="https://github.com/user/email-validator",
+    install_path="src/utils",
+    install_dependencies=True
 )
 
 if result.success:
-    print(f"Project created at: {result.project_path}")
+    print(f"Component installed at: {result.install_path}")
 else:
-    print(f"Creation failed: {result.message}")
+    print(f"Installation failed: {result.message}")
 ```
 
-### Template Validation
+### Component Validation
 
 ```python
-from zen.core.template_validator import TemplateValidator
+from zen.core.component_validator import ComponentValidator
 
-validator = TemplateValidator(registry)
+validator = ComponentValidator(registry)
 
-# Validate a specific template
-template = registry.get_template("fastapi-minimal")
-result = validator.validate_template(template)
+# Validate a specific component
+component = registry.get_component("email-validator")
+result = validator.validate_component(component)
 
 if result.is_valid:
-    print("Template is valid")
+    print("Component is valid")
 else:
     print("Validation errors:")
     for error in result.errors:
@@ -656,124 +605,116 @@ else:
         print(f"  - {warning}")
 ```
 
-### Custom Template Creation
+### Custom Component Creation
 
 ```python
-from zen.schemas.template import TemplateSchema, TemplateFile
+from zen.schemas.component import ComponentSchema, ComponentFile
 
-# Create a custom template
-custom_template = TemplateSchema(
-    name="my-custom-template",
+# Create a custom component
+custom_component = ComponentSchema(
+    name="my-custom-component",
     version="1.0.0",
-    description="My custom FastAPI template",
-    complexity="minimal",
-    category="web",
-    dependencies=["fastapi>=0.104.0", "uvicorn>=0.24.0"],
+    description="My custom utility component",
+    category="utils",
+    dependencies=["requests>=2.25.0"],
     files=[
-        TemplateFile(
-            name="main.py",
-            path="app/main.py",
-            content='from fastapi import FastAPI\napp = FastAPI(title="{{project_name}}")'
+        ComponentFile(
+            name="utils.py",
+            path="src/utils/utils.py",
+            content='import requests\n\ndef fetch_data(url):\n    return requests.get(url).json()'
         )
-    ],
-    template_vars={
-        "project_name": "my_project"
-    }
+    ]
 )
 
-# Register the template
-registry.register_template(custom_template)
+# Register the component
+registry.register_component(custom_component)
 
-# Use the template
-result = initializer.create_project(
-    project_name="test-project",
-    template_name="my-custom-template"
+# Install the component
+result = installer.install_component(
+    component_url="local://my-custom-component"
 )
 ```
 
-### Programmatic Template Management
+### Programmatic Component Management
 
 ```python
-from zen.core.template_utils import TemplateMaintenanceUtils
+from zen.core.component_utils import ComponentMaintenanceUtils
 
-utils = TemplateMaintenanceUtils()
+utils = ComponentMaintenanceUtils()
 
 # Generate comprehensive report
-report = utils.generate_all_templates_report()
+report = utils.generate_all_components_report()
 
-print(f"Total templates: {report['template_count']}")
-print(f"Valid templates: {report['summary']['valid_templates']}")
-print(f"Templates with errors: {report['summary']['templates_with_errors']}")
+print(f"Total components: {report['component_count']}")
+print(f"Valid components: {report['summary']['valid_components']}")
+print(f"Components with errors: {report['summary']['components_with_errors']}")
 
-# Check specific template
-template_report = utils.generate_template_report("fastapi-minimal")
-print(f"Template integrity: {template_report['integrity']['is_valid']}")
+# Check specific component
+component_report = utils.generate_component_report("email-validator")
+print(f"Component integrity: {component_report['integrity']['is_valid']}")
 ```
 
 ## Configuration
 
 ### Environment Variables
 
-The template system respects these environment variables:
+The component system respects these environment variables:
 
-- `ZEN_TEMPLATE_PATH`: Additional paths to search for templates
-- `ZEN_CACHE_DIR`: Directory for template caching
+- `ZEN_COMPONENT_CACHE_DIR`: Directory for component caching
 - `ZEN_LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
+- `ZEN_DEFAULT_INSTALL_PATH`: Default installation path for components
 
 ### Registry Configuration
 
 ```python
-# Custom template paths
-registry = TemplateRegistry(
-    template_paths=[
-        Path("custom/templates"),
-        Path("/usr/local/share/zen/templates")
-    ]
+# Custom component registry configuration
+registry = ComponentRegistry(
+    cache_dir=Path("~/.zen/cache"),
+    default_install_path="src/components"
 )
 ```
 
 ## Performance Considerations
 
-### Template Caching
+### Component Caching
 
-Templates are cached after first load for performance:
+Components are cached after first download for performance:
 
 ```python
-# Clear template cache
+# Clear component cache
 registry.clear_cache()
 
-# Reload templates
-registry.reload_templates()
+# Reload component registry
+registry.reload_registry()
 ```
 
-### Large Template Handling
+### Large Component Handling
 
-For templates with many files:
+For components with many files:
 
 ```python
 # Use streaming for large files
-result = initializer.create_project(
-    project_name="large-project",
-    template_name="industry-template",
+result = installer.install_component(
+    component_url="https://github.com/user/large-component",
     stream_large_files=True  # Process files in chunks
 )
 ```
 
 ## Thread Safety
 
-The template system is thread-safe for read operations:
+The component system is thread-safe for read operations:
 
 ```python
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-def create_project(name, template):
-    return initializer.create_project(name, template)
+def install_component(url, path):
+    return installer.install_component(url, install_path=path)
 
 # Safe to use in multiple threads
 with ThreadPoolExecutor(max_workers=4) as executor:
     futures = [
-        executor.submit(create_project, f"project-{i}", "fastapi-minimal")
+        executor.submit(install_component, f"https://github.com/user/component-{i}", f"src/utils{i}")
         for i in range(10)
     ]
     
@@ -789,18 +730,17 @@ import logging
 from zen.core.logger import setup_logging
 
 setup_logging(verbose=True)
-logger = logging.getLogger("zen.core.template_registry")
+logger = logging.getLogger("zen.core.component_registry")
 logger.setLevel(logging.DEBUG)
 ```
 
-### Template Inspection
+### Component Inspection
 
 ```python
-# Inspect resolved template
-template = registry.get_template("fastapi-moderate")
-resolved = registry.resolve_inheritance(template)
+# Inspect component details
+component = registry.get_component("email-validator")
 
-print(f"Original files: {len(template.files)}")
-print(f"Resolved files: {len(resolved.files)}")
-print(f"Dependencies: {resolved.dependencies}")
+print(f"Component files: {len(component.files)}")
+print(f"Dependencies: {component.dependencies}")
+print(f"Install path: {component.install_path}")
 ```

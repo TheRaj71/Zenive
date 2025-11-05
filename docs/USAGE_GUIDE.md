@@ -1,6 +1,6 @@
 # zen Usage Guide
 
-This guide shows you how to use the zen Python component registry system.
+This guide shows you how to use zen, a Python component registry system inspired by shadcn/ui. zen allows you to install reusable Python components directly into your projects from GitHub repositories.
 
 ## 🚀 Quick Start
 
@@ -15,23 +15,23 @@ cd Zenive
 pip install -e .
 ```
 
-### 2. Create a New Project
+### 2. Initialize Component Registry in Your Project
 ```bash
-# Initialize a new project
+# Initialize zen in an existing project
+cd my-existing-project
+zen init
+
+# Or initialize in a new directory
 zen init my-project
 cd my-project
 
-# Project structure created:
+# Basic project structure created:
 # my-project/
-# ├── .zenive/
+# ├── .zen/
 # │   └── config.yaml
 # ├── src/
-# │   ├── components/
-# │   ├── utils/
-# │   ├── models/
-# │   └── services/
+# │   └── components/
 # ├── requirements.txt
-# ├── .gitignore
 # └── README.md
 ```
 
@@ -166,7 +166,7 @@ email-validator
 
 ### 3. Project Configuration Is Updated
 ```yaml
-# .zenive/config.yaml
+# .zen/config.yaml
 name: my-project
 version: 1.0.0
 structure:
@@ -176,7 +176,7 @@ structure:
   auth: src/auth
 
 components:
-  file:///tmp/zenive-demo-components/email-validator:
+  https://github.com/TheRaj71/Zenive/tree/main/components/email-validator:
     name: email-validator
     version: 1.0.0
     install_path: src/utils
@@ -209,7 +209,7 @@ pip install -r requirements.txt
 ### 1. Dry Run Mode
 ```bash
 # See what would be installed without making changes
-zenive add https://github.com/user/component --dry-run
+zen add https://github.com/user/component --dry-run
 
 # Output:
 # 🔍 DRY RUN - No changes will be made
@@ -223,52 +223,50 @@ zenive add https://github.com/user/component --dry-run
 ### 2. Custom Installation Path
 ```bash
 # Install to specific directory
-zenive add https://github.com/user/data-tools --path src/data/processors
+zen add https://github.com/user/data-tools --path src/data/processors
 
 # Install multiple components to organized structure
-zenive add https://github.com/user/auth-jwt --path src/auth/jwt
-zenive add https://github.com/user/auth-oauth --path src/auth/oauth
+zen add https://github.com/user/auth-jwt --path src/auth/jwt
+zen add https://github.com/user/auth-oauth --path src/auth/oauth
 ```
 
 ### 3. Skip Dependencies
 ```bash
 # Install files only, don't update requirements.txt
-zenive add https://github.com/user/component --no-deps
+zen add https://github.com/user/component --no-deps
 ```
 
 ### 4. Overwrite Existing Files
 ```bash
 # Force overwrite if files already exist
-zenive add https://github.com/user/component --overwrite
+zen add https://github.com/user/component --overwrite
 ```
 
 ## 📊 Managing Components
 
 ### List Available Commands
 ```bash
-zenive --help
+zen --help
 
 # Commands:
-# init      Initialize a new Zenive project
-# add       Install a component from registry or URL
+# init      Initialize zen component registry in a project
+# add       Install a component from GitHub URL
 # remove    Remove an installed component
-# list      List available components in registry
-# search    Search for components
+# list      List installed components
 # info      Show detailed information about a component
-# update    Update installed components
-# config    Manage project configuration
+# animations Display available animations
 ```
 
 ### View Project Status
 ```bash
 # List installed components
-zenive list --installed
+zen list
 
 # Show component details
-zenive info email-validator
+zen info email-validator
 
-# Update components
-zenive update
+# View available animations
+zen animations
 ```
 
 ## 🏗️ Creating Your Own Components
@@ -325,7 +323,7 @@ git remote add origin https://github.com/yourusername/my-component
 git push -u origin main
 
 # Users can install with:
-# zenive add https://github.com/yourusername/my-component
+# zen add https://github.com/yourusername/my-component
 ```
 
 ```bash
@@ -348,7 +346,7 @@ my-components/
 │           └── helper.py
 
 # Users can install specific components:
-# zenive add https://github.com/you/components/tree/main/components/auth/jwt-handler
+# zen add https://github.com/you/components/tree/main/components/auth/jwt-handler
 ```
 
 ## 🔥 Real-World Examples
@@ -356,25 +354,25 @@ my-components/
 ### Example 1: Company Internal Components
 ```bash
 # Set up company component library
-zenive add https://github.com/company/components/tree/main/auth/sso
-zenive add https://github.com/company/components/tree/main/data/processors
-zenive add https://github.com/company/components/tree/main/api/rate-limiter
+zen add https://github.com/company/components/tree/main/auth/sso
+zen add https://github.com/company/components/tree/main/data/processors
+zen add https://github.com/company/components/tree/main/api/rate-limiter
 ```
 
 ### Example 2: Open Source Components
 ```bash
 # Install popular community components
-zenive add https://github.com/python-validators/email-validator
-zenive add https://github.com/ml-utils/data-preprocessor
-zenive add https://github.com/api-tools/request-logger
+zen add https://github.com/python-validators/email-validator
+zen add https://github.com/ml-utils/data-preprocessor
+zen add https://github.com/api-tools/request-logger
 ```
 
 ### Example 3: Personal Component Collection
 ```bash
 # Your personal utility collection
-zenive add https://github.com/yourusername/my-utils/tree/main/text-processing
-zenive add https://github.com/yourusername/my-utils/tree/main/file-helpers
-zenive add https://github.com/yourusername/my-utils/tree/main/config-loader
+zen add https://github.com/yourusername/my-utils/tree/main/text-processing
+zen add https://github.com/yourusername/my-utils/tree/main/file-helpers
+zen add https://github.com/yourusername/my-utils/tree/main/config-loader
 ```
 
 ## 🎯 Best Practices
@@ -412,14 +410,14 @@ zenive add https://github.com/yourusername/my-utils/tree/main/config-loader
 ```bash
 # Error: Component repository doesn't have component.yaml
 # Solution: Ensure component.yaml exists in the root or specify path
-zenive add https://github.com/user/repo/tree/main/path/to/component
+zen add https://github.com/user/repo/tree/main/path/to/component
 ```
 
 #### 2. "Multiple components found"
 ```bash
 # Error: Repository has multiple component.yaml files
 # Solution: Specify the exact component path
-zenive add https://github.com/user/repo/tree/main/components/specific-component
+zen add https://github.com/user/repo/tree/main/components/specific-component
 ```
 
 #### 3. "Dependency conflicts"
@@ -432,8 +430,8 @@ pip install -r requirements.txt --upgrade
 #### 4. "Permission denied"
 ```bash
 # Error: Can't write to directory
-# Solution: Check directory permissions and ensure you're in a Zenive project
-zenive init .  # Initialize if needed
+# Solution: Check directory permissions and ensure you're in a zen project
+zen init .  # Initialize if needed
 ```
 
-This guide should get you started with Zenive! The system works exactly like shadcn/ui but for Python components - simple, powerful, and flexible.
+This guide should get you started with zen! The system works exactly like shadcn/ui but for Python components - simple, powerful, and flexible.

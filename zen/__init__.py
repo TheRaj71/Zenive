@@ -1,10 +1,10 @@
 """
-zen - Python component registry like shadcn/ui
+zen - A component registry for discovering, installing, and managing reusable code components
 """
 
 __version__ = "1.1.0"
 __author__ = "TheRaj71"
-__description__ = "Python component registry system inspired by shadcn/ui"
+__description__ = "A component registry for discovering, installing, and managing reusable code components"
 
 # Core imports
 from zen.core.exceptions import InstallationError, ConfigurationError

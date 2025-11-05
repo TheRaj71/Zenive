@@ -7,7 +7,7 @@ A Python component registry system inspired by shadcn/ui - install Python compon
 ### Installation
 
 ```bash
-pip install zen
+pip install zenive
 ```
 
 ### Initialize a Project
@@ -45,9 +45,9 @@ zen works exactly like shadcn/ui but for Python:
 3. **Files** are copied into the project with automatic dependency management
 4. **No registry lock-in** - install from any GitHub repository or URL
 
-## 📦 Component Format (New & Improved!)
+## 📦 Component Format
 
-Components are now organized like shadcn/ui - separate files with a simple JSON config:
+Components are organized with separate files and a simple JSON config:
 
 **Directory Structure:**
 ```
@@ -81,7 +81,7 @@ email-validator/
 }
 ```
 
-**No more embedded content!** Just reference your files with `url` paths.
+Reference your files with `url` paths for clean organization.
 
 ## 🏗️ Project Structure
 
@@ -102,7 +102,7 @@ my-project/
 └── README.md
 ```
 
-## 🔧 CLI Commands (shadcn/ui inspired)
+## 🔧 CLI Commands
 
 ```bash
 # Initialize new project
@@ -132,16 +132,19 @@ zen info <component-name>
 # Remove component
 zen remove <component-name>
 
+# View available animations
+zen animations
+
 # Help
 zen --help
 zen add --help
 ```
 
-## 📚 Creating Components (The shadcn/ui Way!)
+## 📚 Creating Components
 
-### 1. Component Structure (New!)
+### 1. Component Structure
 
-Create a directory with separate files (much cleaner!):
+Create a directory with separate files:
 
 ```
 my-component/
@@ -152,7 +155,7 @@ my-component/
 └── requirements.txt   # Dependencies
 ```
 
-**component.json** (no embedded content!):
+**component.json:**
 ```json
 {
   "name": "my-component",
@@ -175,7 +178,7 @@ my-component/
 }
 ```
 
-### 2. Hosting Components (GitHub First!)
+### 2. Hosting Components
 
 Push your component directory to GitHub:
 
@@ -195,7 +198,7 @@ zen add https://github.com/user/my-component
 # Specific directory in repo
 zen add https://github.com/user/components/tree/main/my-component
 
-# Direct JSON URL (still works)
+# Direct JSON URL
 zen add https://raw.githubusercontent.com/user/repo/main/component.json
 ```
 
@@ -230,8 +233,8 @@ zen add https://github.com/yourusername/my-components/tree/main/config-loader
 
 ## 🔄 Development Workflow
 
-1. **Create** component JSON with embedded Python code
-2. **Host** JSON file on GitHub, website, CDN, etc.
+1. **Create** component directory with JSON config and Python files
+2. **Host** component on GitHub or any accessible URL
 3. **Share** URL with users
 4. **Users install** with `zen add <your-url>`
 5. **Files copied** directly into user projects
@@ -304,7 +307,6 @@ For detailed documentation, see the [docs](./docs/) folder:
 - [Usage Guide](./docs/USAGE_GUIDE.md) - Comprehensive usage instructions
 - [Examples](./docs/EXAMPLES.md) - Component examples and use cases
 - [API Reference](./docs/API_REFERENCE.md) - Complete API documentation
-- [Template Development](./docs/TEMPLATE_DEVELOPMENT.md) - Creating custom templates
 - [Troubleshooting](./docs/TROUBLESHOOTING.md) - Common issues and solutions
 
 ## 🤝 Contributing

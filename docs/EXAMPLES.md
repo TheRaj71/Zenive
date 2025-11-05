@@ -257,4 +257,4 @@ This makes zen perfect for:
 - **Rapid prototyping** with reusable code snippets
 - **Educational projects** where students can see and modify all code
 - **Custom utilities** that need project-specific modifications
-- **Template-based development** similar to shadcn/ui for React
+- **Component-based development** similar to shadcn/ui for React

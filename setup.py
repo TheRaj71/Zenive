@@ -32,7 +32,7 @@ setup(
     version=get_version(),
     author="TheRaj71",
     author_email="theraj71@example.com",
-    description="Python component registry system inspired by shadcn/ui - install components from GitHub",
+    description="A component registry for discovering, installing, and managing reusable code components",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/TheRaj71/Zenive",
@@ -61,7 +61,7 @@ setup(
     },
     include_package_data=True,
     package_data={
-        "zen": ["templates/*", "schemas/*"],
+        "zen": ["schemas/*"],
     },
     keywords="components, registry, shadcn, python, cli, zen",
     project_urls={

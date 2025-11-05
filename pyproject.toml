@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zenive"
-version = "1.0.0"
+version = "1.1.0"
 authors = [
     {name = "TheRaj71", email = "theraj714@zohomail.com"},
 ]

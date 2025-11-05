@@ -2,7 +2,7 @@
 zen - Python component registry like shadcn/ui
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "TheRaj71"
 __description__ = "Python component registry system inspired by shadcn/ui"
 

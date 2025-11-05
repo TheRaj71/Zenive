@@ -1,0 +1,185 @@
+# Dependabot configuration for automated dependency updates
+# Place this file in .github/dependabot.yml in your repository
+
+version: 2
+updates:
+  # Python package dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    
+    # Security updates are prioritized and processed immediately
+    open-pull-requests-limit: 10
+    
+    # Grouping strategy to reduce PR noise
+    groups:
+      # Group patch updates together
+      patch-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+      
+      # Group development dependencies
+      dev-dependencies:
+        patterns:
+          - "pytest*"
+          - "black"
+          - "isort"
+          - "flake8*"
+          - "mypy*"
+          - "pre-commit*"
+          - "tox*"
+          - "coverage*"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # Group documentation dependencies
+      docs-dependencies:
+        patterns:
+          - "sphinx*"
+          - "mkdocs*"
+          - "readthedocs*"
+        update-types:
+          - "minor"
+          - "patch"
+    
+    # Commit message configuration
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+    
+    # Pull request configuration
+    pull-request-branch-name:
+      separator: "/"
+    
+    # Reviewers and assignees (customize as needed)
+    reviewers:
+      - "maintainer-team"  # Replace with actual team/user names
+    
+    # Labels to apply to Dependabot PRs
+    labels:
+      - "dependencies"
+      - "automated"
+    
+    # Allow Dependabot to resolve conflicts automatically
+    rebase-strategy: "auto"
+    
+    # Ignore specific dependencies or versions
+    ignore:
+      # Ignore major version updates for stable packages
+      - dependency-name: "django"
+        update-types: ["version-update:semver-major"]
+      
+      # Ignore specific packages that require manual review
+      - dependency-name: "tensorflow"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      
+      # Example: Ignore beta/alpha versions
+      - dependency-name: "*"
+        versions: ["*alpha*", "*beta*", "*rc*"]
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+      timezone: "UTC"
+    
+    open-pull-requests-limit: 5
+    
+    # Group all GitHub Actions updates together
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    
+    labels:
+      - "github-actions"
+      - "ci"
+      - "automated"
+    
+    reviewers:
+      - "devops-team"  # Replace with actual team/user names
+
+  # Docker dependencies (if using Docker)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+      timezone: "UTC"
+    
+    open-pull-requests-limit: 3
+    
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+    
+    labels:
+      - "docker"
+      - "infrastructure"
+      - "automated"
+
+  # npm dependencies (if using Node.js tools)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "UTC"
+    
+    open-pull-requests-limit: 5
+    
+    # Group frontend tooling updates
+    groups:
+      frontend-tooling:
+        patterns:
+          - "@types/*"
+          - "eslint*"
+          - "prettier*"
+          - "webpack*"
+          - "babel*"
+        update-types:
+          - "minor"
+          - "patch"
+    
+    commit-message:
+      prefix: "npm"
+      include: "scope"
+    
+    labels:
+      - "npm"
+      - "frontend"
+      - "automated"
+    
+    # Ignore devDependencies major updates by default
+    ignore:
+      - dependency-name: "*"
+        dependency-type: "development"
+        update-types: ["version-update:semver-major"]
+
+# Security-specific configuration
+# Dependabot will automatically create PRs for security vulnerabilities
+# regardless of the schedule, with higher priority
+
+# Additional notes:
+# 1. Security updates bypass the schedule and are created immediately
+# 2. Dependabot will automatically rebase PRs when the base branch is updated
+# 3. PRs are automatically closed if the dependency is updated by other means
+# 4. Use 'dependabot.yml' validation tools to verify configuration syntax
+# 5. Monitor Dependabot activity in the repository's Security tab

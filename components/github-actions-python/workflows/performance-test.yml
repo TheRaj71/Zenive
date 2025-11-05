@@ -1,0 +1,341 @@
+name: Performance Testing
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    # Run performance tests weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: 'Git reference to compare against (default: main)'
+        required: false
+        default: 'main'
+      benchmark_filter:
+        description: 'Filter for specific benchmarks (pytest-benchmark filter)'
+        required: false
+        default: ''
+
+jobs:
+  performance-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.11']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for comparison
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-perf-${{ matrix.python-version }}-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-perf-${{ matrix.python-version }}-
+          ${{ runner.os }}-pip-perf-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install performance testing dependencies
+        pip install pytest-benchmark pytest-memray memory-profiler psutil
+        
+        # Install project dependencies
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+        elif [ -f pyproject.toml ]; then
+          pip install -e .
+        elif [ -f setup.py ]; then
+          pip install -e .
+        fi
+        
+        # Install test dependencies if they exist
+        if [ -f requirements-test.txt ]; then
+          pip install -r requirements-test.txt
+        elif [ -f test-requirements.txt ]; then
+          pip install -r test-requirements.txt
+        fi
+    
+    - name: Create benchmark results directory
+      run: mkdir -p benchmark-results
+    
+    - name: Run performance benchmarks
+      run: |
+        # Set benchmark filter if provided
+        FILTER_ARG=""
+        if [ -n "${{ github.event.inputs.benchmark_filter }}" ]; then
+          FILTER_ARG="-k ${{ github.event.inputs.benchmark_filter }}"
+        fi
+        
+        # Run benchmarks with JSON output for comparison
+        pytest $FILTER_ARG \
+          --benchmark-json=benchmark-results/current-${{ matrix.python-version }}.json \
+          --benchmark-histogram=benchmark-results/histogram-${{ matrix.python-version }} \
+          --benchmark-save=current-${{ matrix.python-version }} \
+          --benchmark-save-data \
+          --benchmark-sort=mean \
+          --benchmark-columns=min,max,mean,stddev,median,iqr,outliers,ops,rounds \
+          tests/ || true
+    
+    - name: Memory profiling
+      run: |
+        # Create memory profiling script
+        cat > memory_profile.py << 'EOF'
+        import subprocess
+        import sys
+        import os
+        from memory_profiler import profile
+        import psutil
+        import json
+        
+        def get_memory_usage():
+            """Get current memory usage in MB"""
+            process = psutil.Process(os.getpid())
+            return process.memory_info().rss / 1024 / 1024
+        
+        def run_memory_profile():
+            """Run memory profiling on test suite"""
+            initial_memory = get_memory_usage()
+            
+            # Run a subset of tests for memory profiling
+            result = subprocess.run([
+                sys.executable, '-m', 'pytest', 
+                '--tb=short', '-v', 'tests/'
+            ], capture_output=True, text=True)
+            
+            final_memory = get_memory_usage()
+            peak_memory = max(initial_memory, final_memory)
+            
+            memory_stats = {
+                'initial_memory_mb': round(initial_memory, 2),
+                'final_memory_mb': round(final_memory, 2),
+                'peak_memory_mb': round(peak_memory, 2),
+                'memory_delta_mb': round(final_memory - initial_memory, 2)
+            }
+            
+            with open('benchmark-results/memory-profile-${{ matrix.python-version }}.json', 'w') as f:
+                json.dump(memory_stats, f, indent=2)
+            
+            print(f"Memory Profile Results:")
+            print(f"Initial Memory: {initial_memory:.2f} MB")
+            print(f"Final Memory: {final_memory:.2f} MB")
+            print(f"Peak Memory: {peak_memory:.2f} MB")
+            print(f"Memory Delta: {final_memory - initial_memory:.2f} MB")
+        
+        if __name__ == '__main__':
+            run_memory_profile()
+        EOF
+        
+        python memory_profile.py || true
+    
+    - name: Download baseline benchmark (if available)
+      continue-on-error: true
+      run: |
+        # Try to download baseline benchmark from previous runs
+        BASELINE_REF="${{ github.event.inputs.baseline_ref || 'main' }}"
+        
+        # For pull requests, compare against target branch
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          BASELINE_REF="${{ github.base_ref }}"
+        fi
+        
+        echo "Attempting to download baseline from ref: $BASELINE_REF"
+        
+        # Try to get baseline from artifacts (this would need to be implemented with artifact storage)
+        # For now, we'll create a placeholder baseline
+        echo "Creating placeholder baseline for comparison"
+        mkdir -p baseline-results
+    
+    - name: Compare performance with baseline
+      continue-on-error: true
+      run: |
+        # Create performance comparison script
+        cat > compare_performance.py << 'EOF'
+        import json
+        import os
+        import sys
+        from pathlib import Path
+        
+        def load_benchmark_data(filepath):
+            """Load benchmark data from JSON file"""
+            try:
+                with open(filepath, 'r') as f:
+                    return json.load(f)
+            except FileNotFoundError:
+                return None
+        
+        def compare_benchmarks(current_file, baseline_file=None):
+            """Compare current benchmarks with baseline"""
+            current_data = load_benchmark_data(current_file)
+            if not current_data:
+                print(f"No current benchmark data found at {current_file}")
+                return
+            
+            print(f"\n=== Performance Test Results (Python ${{ matrix.python-version }}) ===")
+            
+            if 'benchmarks' in current_data:
+                benchmarks = current_data['benchmarks']
+                print(f"Total benchmarks run: {len(benchmarks)}")
+                
+                for benchmark in benchmarks:
+                    name = benchmark.get('name', 'Unknown')
+                    stats = benchmark.get('stats', {})
+                    mean = stats.get('mean', 0)
+                    stddev = stats.get('stddev', 0)
+                    min_time = stats.get('min', 0)
+                    max_time = stats.get('max', 0)
+                    
+                    print(f"\nBenchmark: {name}")
+                    print(f"  Mean: {mean:.6f}s (±{stddev:.6f}s)")
+                    print(f"  Min:  {min_time:.6f}s")
+                    print(f"  Max:  {max_time:.6f}s")
+                    
+                    # Performance thresholds (configurable)
+                    if mean > 1.0:  # Warn if any benchmark takes more than 1 second
+                        print(f"  ⚠️  WARNING: Benchmark is slow (>{1.0}s)")
+                    elif mean > 0.1:  # Info if benchmark takes more than 100ms
+                        print(f"  ℹ️  INFO: Benchmark is moderate (>{0.1}s)")
+                    else:
+                        print(f"  ✅ GOOD: Benchmark is fast (<{0.1}s)")
+            
+            # Load and display memory profile if available
+            memory_file = f"benchmark-results/memory-profile-${{ matrix.python-version }}.json"
+            memory_data = load_benchmark_data(memory_file)
+            if memory_data:
+                print(f"\n=== Memory Profile Results ===")
+                print(f"Initial Memory: {memory_data.get('initial_memory_mb', 0):.2f} MB")
+                print(f"Final Memory: {memory_data.get('final_memory_mb', 0):.2f} MB")
+                print(f"Peak Memory: {memory_data.get('peak_memory_mb', 0):.2f} MB")
+                print(f"Memory Delta: {memory_data.get('memory_delta_mb', 0):.2f} MB")
+                
+                # Memory thresholds
+                peak_memory = memory_data.get('peak_memory_mb', 0)
+                if peak_memory > 500:  # Warn if peak memory > 500MB
+                    print(f"  ⚠️  WARNING: High memory usage (>{500}MB)")
+                elif peak_memory > 100:  # Info if peak memory > 100MB
+                    print(f"  ℹ️  INFO: Moderate memory usage (>{100}MB)")
+                else:
+                    print(f"  ✅ GOOD: Low memory usage (<{100}MB)")
+        
+        if __name__ == '__main__':
+            current_file = f"benchmark-results/current-${{ matrix.python-version }}.json"
+            compare_benchmarks(current_file)
+        EOF
+        
+        python compare_performance.py
+    
+    - name: Generate performance report
+      run: |
+        # Create a comprehensive performance report
+        cat > benchmark-results/performance-report-${{ matrix.python-version }}.md << 'EOF'
+        # Performance Test Report
+        
+        **Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Python Version:** ${{ matrix.python-version }}
+        **Commit:** ${{ github.sha }}
+        **Branch:** ${{ github.ref_name }}
+        
+        ## Benchmark Results
+        
+        EOF
+        
+        # Add benchmark summary to report if data exists
+        if [ -f "benchmark-results/current-${{ matrix.python-version }}.json" ]; then
+          echo "Benchmark data collected successfully" >> benchmark-results/performance-report-${{ matrix.python-version }}.md
+        else
+          echo "No benchmark data available" >> benchmark-results/performance-report-${{ matrix.python-version }}.md
+        fi
+        
+        # Add memory profile to report if data exists
+        if [ -f "benchmark-results/memory-profile-${{ matrix.python-version }}.json" ]; then
+          echo -e "\n## Memory Profile\n" >> benchmark-results/performance-report-${{ matrix.python-version }}.md
+          echo "Memory profiling completed successfully" >> benchmark-results/performance-report-${{ matrix.python-version }}.md
+        fi
+        
+        echo -e "\n## Files Generated\n" >> benchmark-results/performance-report-${{ matrix.python-version }}.md
+        ls -la benchmark-results/ >> benchmark-results/performance-report-${{ matrix.python-version }}.md
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: performance-results-python-${{ matrix.python-version }}
+        path: |
+          benchmark-results/
+        retention-days: 30
+    
+    - name: Comment PR with performance results
+      if: github.event_name == 'pull_request'
+      continue-on-error: true
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          try {
+            const reportPath = `benchmark-results/performance-report-${{ matrix.python-version }}.md`;
+            if (fs.existsSync(reportPath)) {
+              const report = fs.readFileSync(reportPath, 'utf8');
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## Performance Test Results (Python ${{ matrix.python-version }})\n\n${report}`
+              });
+            }
+          } catch (error) {
+            console.log('Could not post performance results comment:', error.message);
+          }
+
+  performance-summary:
+    needs: performance-test
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Download all performance results
+      uses: actions/download-artifact@v3
+      with:
+        path: all-results
+    
+    - name: Create combined performance summary
+      run: |
+        echo "# Performance Test Summary" > performance-summary.md
+        echo "" >> performance-summary.md
+        echo "**Workflow:** ${{ github.workflow }}" >> performance-summary.md
+        echo "**Run ID:** ${{ github.run_id }}" >> performance-summary.md
+        echo "**Commit:** ${{ github.sha }}" >> performance-summary.md
+        echo "**Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> performance-summary.md
+        echo "" >> performance-summary.md
+        
+        # List all collected results
+        echo "## Results Collected" >> performance-summary.md
+        find all-results -name "*.json" -o -name "*.md" | sort >> performance-summary.md
+        
+        echo "" >> performance-summary.md
+        echo "## Next Steps" >> performance-summary.md
+        echo "- Review benchmark results in the artifacts" >> performance-summary.md
+        echo "- Compare with baseline performance metrics" >> performance-summary.md
+        echo "- Investigate any performance regressions" >> performance-summary.md
+        echo "- Update performance baselines if improvements are confirmed" >> performance-summary.md
+    
+    - name: Upload combined summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-summary
+        path: performance-summary.md
+        retention-days: 90

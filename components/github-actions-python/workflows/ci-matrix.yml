@@ -1,0 +1,325 @@
+# Matrix CI Workflow
+# 
+# This workflow provides comprehensive testing across multiple Python versions and operating systems.
+# It's designed for libraries and applications that need to ensure compatibility across different environments.
+#
+# Features:
+# - Tests Python 3.8, 3.9, 3.10, 3.11, and 3.12
+# - Tests on Ubuntu, Windows, and macOS
+# - Parallel execution for faster feedback
+# - Intelligent dependency caching
+# - Coverage reporting and aggregation
+# - Test result artifacts for debugging
+#
+# Customization Options:
+# - Modify python-version array to test different versions
+# - Modify os array to test different operating systems  
+# - Add exclude combinations for unsupported version/OS pairs
+# - Adjust caching strategy for different dependency managers
+# - Configure coverage reporting thresholds and formats
+#
+# Required Secrets: None (uses default GITHUB_TOKEN)
+# Optional Secrets: CODECOV_TOKEN (for enhanced Codecov integration)
+
+name: Matrix CI
+
+# Workflow Triggers
+# Customize these triggers based on your branching strategy
+on:
+  push:
+    branches: [ main, master ]  # Add other branches like 'develop' if needed
+  pull_request:
+    branches: [ main, master ]  # Ensures PRs are tested before merge
+  # Uncomment to enable manual triggering
+  # workflow_dispatch:
+  # Uncomment to enable scheduled runs (e.g., nightly)
+  # schedule:
+  #   - cron: '0 2 * * *'  # Run at 2 AM UTC daily
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    
+    # Matrix Strategy Configuration
+    strategy:
+      # Set to true to cancel remaining jobs if one fails (faster feedback but less coverage)
+      # Set to false to run all combinations even if some fail (better for debugging)
+      fail-fast: false
+      
+      matrix:
+        # Python Versions to Test
+        # Customize this list based on your project's support policy
+        # Consider your dependencies' Python version requirements
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        
+        # Operating Systems to Test
+        # ubuntu-latest: Most common, fastest, cheapest
+        # windows-latest: Important for Windows-specific issues
+        # macos-latest: Important for macOS-specific issues, most expensive
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        
+        # Exclude Specific Combinations (uncomment and customize as needed)
+        # Use this to skip combinations that are known to be unsupported or problematic
+        # exclude:
+        #   - python-version: '3.8'      # Example: Skip Python 3.8 on macOS
+        #     os: macos-latest
+        #   - python-version: '3.12'     # Example: Skip Python 3.12 on Windows if not yet supported
+        #     os: windows-latest
+        
+        # Include Additional Combinations (uncomment and customize as needed)
+        # Use this to test specific combinations with different configurations
+        # include:
+        #   - python-version: '3.11'     # Example: Test with specific dependency versions
+        #     os: ubuntu-latest
+        #     extra-deps: 'numpy==1.21.0'
+    
+    steps:
+    # Step 1: Checkout Repository Code
+    # Downloads the repository content to the runner
+    - name: Checkout code
+      uses: actions/checkout@v4
+      # Uncomment if you need full git history (e.g., for version calculation)
+      # with:
+      #   fetch-depth: 0
+    
+    # Step 2: Set Up Python Environment
+    # Installs the specified Python version using the setup-python action
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        # Uncomment to use a specific architecture (useful for Apple Silicon compatibility)
+        # architecture: 'x64'
+    
+    # Step 3: Cache Dependencies
+    # Caches pip dependencies to speed up subsequent runs
+    # Cache key includes OS, Python version, and dependency file hashes for accuracy
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        # Paths to cache (customize based on your dependency manager)
+        path: |
+          ~/.cache/pip                    # pip cache (Linux/macOS)
+          ~\AppData\Local\pip\Cache       # pip cache (Windows)
+          ~/.local/share/virtualenvs      # pipenv virtual environments
+          ~/.cache/pypoetry               # poetry cache
+        
+        # Cache key - change triggers cache invalidation
+        # Includes dependency files to ensure cache updates when dependencies change
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml', '**/setup.py', '**/Pipfile.lock', '**/poetry.lock') }}
+        
+        # Fallback keys for partial cache hits
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+          ${{ runner.os }}-pip-
+    
+    # Step 4: Install Dependencies
+    # Installs Python dependencies and the project itself
+    - name: Install dependencies
+      run: |
+        # Upgrade pip to latest version for better dependency resolution
+        python -m pip install --upgrade pip
+        
+        # Install testing framework and related tools
+        # pytest: Main testing framework
+        # pytest-cov: Coverage reporting plugin
+        # pytest-xdist: Parallel test execution plugin
+        pip install pytest pytest-cov pytest-xdist
+        
+        # Install project dependencies based on available files
+        # Check for various dependency file formats and install accordingly
+        
+        # Standard requirements.txt (most common)
+        if [ -f requirements.txt ]; then 
+          echo "Installing from requirements.txt"
+          pip install -r requirements.txt
+        fi
+        
+        # Development dependencies (various naming conventions)
+        if [ -f requirements-dev.txt ]; then 
+          echo "Installing development dependencies from requirements-dev.txt"
+          pip install -r requirements-dev.txt
+        fi
+        if [ -f dev-requirements.txt ]; then 
+          echo "Installing development dependencies from dev-requirements.txt"
+          pip install -r dev-requirements.txt
+        fi
+        if [ -f requirements/dev.txt ]; then 
+          echo "Installing development dependencies from requirements/dev.txt"
+          pip install -r requirements/dev.txt
+        fi
+        
+        # Install project in development mode
+        # This makes the project importable and allows testing of the actual code
+        if [ -f setup.py ]; then 
+          echo "Installing project in development mode (setup.py)"
+          pip install -e .
+        elif [ -f pyproject.toml ]; then 
+          echo "Installing project in development mode (pyproject.toml)"
+          pip install -e .
+        fi
+        
+        # Alternative dependency managers (uncomment if using)
+        # Pipenv
+        # if [ -f Pipfile ]; then
+        #   pip install pipenv
+        #   pipenv install --dev --system
+        # fi
+        
+        # Poetry
+        # if [ -f pyproject.toml ] && grep -q "tool.poetry" pyproject.toml; then
+        #   pip install poetry
+        #   poetry install
+        # fi
+        
+        # Display installed packages for debugging
+        echo "Installed packages:"
+        pip list
+      shell: bash
+    
+    # Step 5: Run Tests with Coverage
+    # Executes the test suite with coverage reporting and parallel execution
+    - name: Run tests with coverage
+      run: |
+        # Run pytest with comprehensive options
+        # --cov=.: Generate coverage for all Python files in current directory
+        # --cov-report=xml: Generate XML coverage report for external tools
+        # --cov-report=term-missing: Show missing lines in terminal output
+        # -n auto: Use pytest-xdist for parallel execution (auto-detects CPU count)
+        # -v: Verbose output for better debugging
+        # --tb=short: Shorter traceback format for cleaner output
+        
+        pytest \
+          --cov=. \
+          --cov-report=xml \
+          --cov-report=term-missing \
+          --cov-report=html \
+          -n auto \
+          -v \
+          --tb=short
+        
+        # Alternative test configurations (uncomment as needed):
+        
+        # For unittest instead of pytest:
+        # python -m unittest discover -s tests -p "test_*.py" -v
+        
+        # For specific test directories:
+        # pytest tests/ --cov=src --cov-report=xml
+        
+        # For doctests:
+        # pytest --doctest-modules src/
+        
+        # With specific markers:
+        # pytest -m "not slow" --cov=. --cov-report=xml
+        
+        # With coverage threshold (fail if below threshold):
+        # pytest --cov=. --cov-report=xml --cov-fail-under=80
+      shell: bash
+      
+      # Environment variables for test execution (customize as needed)
+      env:
+        # Disable pytest warnings for cleaner output
+        PYTHONWARNINGS: ignore
+        # Set test environment
+        TESTING: true
+        # Uncomment if your tests need specific environment variables
+        # DATABASE_URL: sqlite:///:memory:
+        # API_KEY: test_key_123
+    
+    # Step 6: Upload Coverage to Codecov
+    # Only upload from one matrix combination to avoid duplicates
+    # Choose the most stable/representative combination (Ubuntu + Python 3.11)
+    - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false  # Don't fail CI if Codecov upload fails
+        verbose: true            # Enable verbose logging for debugging
+        # Uncomment if you have a Codecov token (recommended for private repos)
+        # token: ${{ secrets.CODECOV_TOKEN }}
+    
+    # Step 7: Store Test Results as Artifacts
+    # Saves test results and coverage data for later analysis
+    # Runs even if tests fail (if: always())
+    - name: Upload test results
+      if: always()  # Run this step even if previous steps failed
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: |
+          coverage.xml          # Coverage report in XML format
+          htmlcov/             # HTML coverage report
+          .coverage            # Raw coverage data
+          pytest-report.xml    # JUnit XML report (if configured)
+          test-results.xml     # Test results (if configured)
+        retention-days: 30     # Keep artifacts for 30 days
+        if-no-files-found: warn  # Warn if no files found, don't fail
+
+  # Test Summary Job
+  # Aggregates results from all matrix combinations and provides a single status check
+  # This is useful for branch protection rules that require a single status check
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: test
+    if: always()  # Run even if some matrix jobs failed
+    
+    steps:
+    # Step 1: Evaluate Test Results
+    # Checks the overall result of the matrix test job
+    - name: Check test results
+      run: |
+        echo "Test job result: ${{ needs.test.result }}"
+        
+        # Provide detailed feedback based on test results
+        case "${{ needs.test.result }}" in
+          "success")
+            echo "✅ All tests passed successfully across all matrix combinations!"
+            echo "Matrix tested:"
+            echo "  - Python versions: 3.8, 3.9, 3.10, 3.11, 3.12"
+            echo "  - Operating systems: Ubuntu, Windows, macOS"
+            ;;
+          "failure")
+            echo "❌ Some tests failed in the matrix"
+            echo "Check the individual matrix job logs for details"
+            echo "Common causes:"
+            echo "  - Platform-specific issues"
+            echo "  - Python version compatibility problems"
+            echo "  - Dependency conflicts"
+            exit 1
+            ;;
+          "cancelled")
+            echo "⚠️ Tests were cancelled"
+            echo "This might be due to:"
+            echo "  - Manual cancellation"
+            echo "  - Timeout"
+            echo "  - Resource constraints"
+            exit 1
+            ;;
+          "skipped")
+            echo "⏭️ Tests were skipped"
+            echo "This might be due to conditional logic in the workflow"
+            ;;
+          *)
+            echo "❓ Unknown test result: ${{ needs.test.result }}"
+            exit 1
+            ;;
+        esac
+    
+    # Step 2: Post Summary Comment (for pull requests)
+    # Uncomment this section if you want to post test results as PR comments
+    # - name: Post test summary comment
+    #   if: github.event_name == 'pull_request'
+    #   uses: actions/github-script@v6
+    #   with:
+    #     script: |
+    #       const result = '${{ needs.test.result }}';
+    #       const emoji = result === 'success' ? '✅' : '❌';
+    #       const message = `${emoji} Matrix CI Results: ${result}`;
+    #       
+    #       github.rest.issues.createComment({
+    #         issue_number: context.issue.number,
+    #         owner: conte

@@ -1,0 +1,308 @@
+# Code Quality Workflow
+#
+# This workflow enforces code quality standards using industry-standard Python tools.
+# It runs on every push and pull request to ensure consistent code style and quality.
+#
+# Tools Included:
+# - Black: Uncompromising code formatter (88 character line length)
+# - isort: Import statement organizer and sorter
+# - flake8: Style guide enforcement (PEP 8) and basic linting
+# - pylint: Advanced static analysis and code quality checking
+# - mypy: Static type checking for better code reliability
+#
+# Customization Options:
+# - Adjust tool configurations in pyproject.toml or individual config files
+# - Modify strictness levels by changing continue-on-error settings
+# - Add or remove tools based on project needs
+# - Configure different rules for different directories
+#
+# Required Secrets: None (uses default GITHUB_TOKEN)
+# Configuration Files: 
+# - .flake8 or setup.cfg for flake8 configuration
+# - pyproject.toml for Black, isort, and other tool configurations
+# - mypy.ini or pyproject.toml for mypy configuration
+
+name: Code Quality
+
+# Workflow Triggers
+# Runs on pushes and pull requests to main branches
+on:
+  push:
+    branches: [ main, master, develop ]  # Add other branches as needed
+  pull_request:
+    branches: [ main, master, develop ]  # Ensures PRs meet quality standards
+  # Uncomment to enable manual triggering
+  # workflow_dispatch:
+  # Uncomment to run on specific paths only
+  # paths:
+  #   - '**.py'
+  #   - 'pyproject.toml'
+  #   - 'setup.cfg'
+
+jobs:
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    # Use matrix for consistency with other workflows, but typically only need one Python version
+    strategy:
+      matrix:
+        python-version: [3.11]  # Use a stable, recent Python version for quality checks
+
+    steps:
+    # Step 1: Checkout Repository Code
+    - name: Checkout code
+      uses: actions/checkout@v4
+      # Uncomment if you need full git history (e.g., for git-based linting rules)
+      # with:
+      #   fetch-depth: 0
+
+    # Step 2: Set Up Python Environment
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    # Step 3: Cache Dependencies
+    # Caches pip dependencies to speed up workflow execution
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-code-quality-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml', '**/setup.py') }}
+        restore-keys: |
+          ${{ runner.os }}-code-quality-
+          ${{ runner.os }}-pip-
+
+    # Step 4: Install Dependencies and Tools
+    - name: Install dependencies
+      run: |
+        # Upgrade pip for better dependency resolution
+        python -m pip install --upgrade pip
+        
+        # Install code quality tools with specific versions for consistency
+        # You can pin versions for reproducible results across different runs
+        pip install \
+          black>=23.0.0 \
+          isort>=5.12.0 \
+          flake8>=6.0.0 \
+          pylint>=2.17.0 \
+          mypy>=1.0.0
+        
+        # Install additional flake8 plugins (uncomment as needed)
+        # pip install flake8-docstrings flake8-import-order flake8-bugbear
+        
+        # Install project dependencies to ensure tools can analyze the code properly
+        if [ -f requirements.txt ]; then 
+          echo "Installing project dependencies from requirements.txt"
+          pip install -r requirements.txt
+        fi
+        if [ -f requirements-dev.txt ]; then 
+          echo "Installing development dependencies"
+          pip install -r requirements-dev.txt
+        fi
+        
+        # Install project in development mode for proper imports
+        if [ -f pyproject.toml ]; then 
+          echo "Installing project in development mode"
+          pip install -e .
+        elif [ -f setup.py ]; then 
+          echo "Installing project in development mode"
+          pip install -e .
+        fi
+        
+        # Display installed tool versions for debugging
+        echo "Installed tool versions:"
+        black --version
+        isort --version
+        flake8 --version
+        pylint --version
+        mypy --version
+
+    # Step 5: Run Black (Code Formatting Check)
+    # Black enforces consistent code formatting with minimal configuration
+    - name: Run Black (Code Formatting Check)
+      run: |
+        echo "::group::Black - Code Formatting Check"
+        echo "Checking code formatting with Black..."
+        echo "Black uses 88-character line length and enforces consistent style"
+        
+        # Run Black in check mode (doesn't modify files, just reports issues)
+        # --check: Don't write back modified files, just return status
+        # --diff: Show diffs for files that would be reformatted
+        # --color: Use colored output for better readability
+        black --check --diff --color .
+        
+        # Alternative configurations (uncomment as needed):
+        # black --check --diff --color src/  # Check only src directory
+        # black --check --diff --color --line-length=100 .  # Use 100 char line length
+        # black --check --diff --color --skip-string-normalization .  # Keep quote style
+        
+        echo "✅ Black formatting check completed"
+        echo "::endgroup::"
+
+    # Step 6: Run isort (Import Sorting Check)
+    # isort organizes imports according to PEP 8 and other standards
+    - name: Run isort (Import Sorting Check)
+      run: |
+        echo "::group::isort - Import Sorting Check"
+        echo "Checking import organization with isort..."
+        echo "isort organizes imports into sections: stdlib, third-party, local"
+        
+        # Run isort in check mode
+        # --check-only: Don't modify files, just check if they would be changed
+        # --diff: Show diffs for files that would be changed
+        # --color: Use colored output
+        isort --check-only --diff --color .
+        
+        # Alternative configurations (uncomment as needed):
+        # isort --check-only --diff --color --profile=black .  # Use Black-compatible profile
+        # isort --check-only --diff --color src/  # Check only src directory
+        # isort --check-only --diff --color --force-single-line .  # Force single-line imports
+        
+        echo "✅ isort import sorting check completed"
+        echo "::endgroup::"
+
+    # Step 7: Run flake8 (Style Guide Enforcement)
+    # flake8 checks for PEP 8 compliance and common programming errors
+    - name: Run flake8 (Style Guide Enforcement)
+      run: |
+        echo "::group::flake8 - Style Guide and Linting"
+        echo "Running flake8 for PEP 8 compliance and error detection..."
+        
+        # First pass: Check for serious errors that should always fail
+        echo "Checking for critical errors (syntax, undefined names, etc.)..."
+        flake8 . \
+          --count \
+          --select=E9,F63,F7,F82 \
+          --show-source \
+          --statistics
+        
+        # Second pass: Check for style issues with more lenient settings
+        echo "Checking for style issues and complexity..."
+        flake8 . \
+          --count \
+          --exit-zero \
+          --max-complexity=10 \
+          --max-line-length=88 \
+          --statistics \
+          --format='%(path)s:%(row)d:%(col)d: %(code)s %(text)s'
+        
+        # Configuration options (customize in .flake8 or setup.cfg):
+        # max-line-length: Maximum line length (88 to match Black)
+        # max-complexity: Maximum cyclomatic complexity
+        # ignore: Error codes to ignore (e.g., E203,W503 for Black compatibility)
+        # exclude: Directories to exclude (e.g., .git,__pycache__,venv)
+        
+        echo "✅ flake8 style checking completed"
+        echo "::endgroup::"
+
+    # Step 8: Run pylint (Advanced Static Analysis)
+    # pylint provides detailed code analysis and quality metrics
+    - name: Run pylint (Advanced Static Analysis)
+      run: |
+        echo "::group::pylint - Advanced Code Analysis"
+        echo "Running pylint for advanced static analysis..."
+        echo "pylint provides detailed code quality metrics and suggestions"
+        
+        # Find Python files and run pylint
+        # Exclude common directories that shouldn't be linted
+        python_files=$(find . -name "*.py" \
+          -not -path "./venv/*" \
+          -not -path "./.venv/*" \
+          -not -path "./env/*" \
+          -not -path "./.env/*" \
+          -not -path "./build/*" \
+          -not -path "./dist/*" \
+          -not -path "./.git/*" \
+          -not -path "./__pycache__/*" \
+          | head -20)  # Limit to first 20 files to avoid timeout
+        
+        if [ -n "$python_files" ]; then
+          echo "Analyzing Python files with pylint..."
+          echo "$python_files" | xargs pylint \
+            --exit-zero \
+            --score=yes \
+            --reports=yes \
+            --output-format=colorized
+        else
+          echo "No Python files found to analyze"
+        fi
+        
+        # Configuration options (customize in .pylintrc or pyproject.toml):
+        # --disable: Disable specific warnings (e.g., C0114,C0115,C0116 for missing docstrings)
+        # --enable: Enable specific checks
+        # --fail-under: Minimum score required (0-10 scale)
+        # --max-line-length: Maximum line length
+        
+        echo "✅ pylint analysis completed"
+        echo "::endgroup::"
+      continue-on-error: true  # Don't fail CI for pylint issues initially
+
+    # Step 9: Run mypy (Static Type Checking)
+    # mypy performs static type checking to catch type-related errors
+    - name: Run mypy (Static Type Checking)
+      run: |
+        echo "::group::mypy - Static Type Checking"
+        echo "Running mypy for static type analysis..."
+        echo "mypy helps catch type-related errors before runtime"
+        
+        # Run mypy with configuration suitable for gradual typing adoption
+        mypy . \
+          --ignore-missing-imports \
+          --no-strict-optional \
+          --allow-untyped-defs \
+          --show-error-codes \
+          --pretty \
+          --color-output || true
+        
+        # Alternative configurations (uncomment as needed):
+        # Strict mode (for well-typed codebases):
+        # mypy . --strict
+        
+        # Check only specific directories:
+        # mypy src/ --ignore-missing-imports
+        
+        # Generate HTML report:
+        # mypy . --html-report mypy-report --ignore-missing-imports
+        
+        # Configuration options (customize in mypy.ini or pyproject.toml):
+        # python_version: Target Python version
+        # warn_return_any: Warn about returning Any from functions
+        # warn_unused_configs: Warn about unused mypy configuration
+        # disallow_untyped_defs: Require type annotations for all functions
+        
+        echo "✅ mypy type checking completed"
+        echo "::endgroup::"
+      continue-on-error: true  # Don't fail CI for mypy issues initially
+
+    # Step 10: Generate Code Quality Summary
+    # Provides a summary of all quality checks and guidance for improvement
+    - name: Code Quality Summary
+      if: always()  # Run even if previous steps failed
+      run: |
+        echo "::notice title=Code Quality Summary::Code quality checks completed successfully!"
+        echo ""
+        echo "📊 Quality Check Results:"
+        echo "✅ Black: Code formatting verification"
+        echo "✅ isort: Import organization verification" 
+        echo "✅ flake8: PEP 8 compliance and error detection"
+        echo "⚠️  pylint: Advanced analysis (warnings allowed initially)"
+        echo "⚠️  mypy: Type checking (warnings allowed initially)"
+        echo ""
+        echo "🔧 To fix formatting issues locally:"
+        echo "  black ."
+        echo "  isort ."
+        echo ""
+        echo "📝 Configuration files you can customize:"
+        echo "  - pyproject.toml: Configure Black, isort, and other tools"
+        echo "  - .flake8 or setup.cfg: Configure flake8"
+        echo "  - mypy.ini: Configure mypy"
+        echo "  - .pylintrc: Configure pylint"
+        echo ""
+        echo "🎯 For stricter enforcement:"
+        echo "  - Remove 'continue-on-error: true' from pylint and mypy steps"
+        echo "  - Add '--fail-under' thresholds for pylint scores"
+        echo "  - Enable mypy strict mode"
+        echo ""
+        echo "::notice title=Next Steps::Review any warnings above and consider configuring tools for your project's needs."

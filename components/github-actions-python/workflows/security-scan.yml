@@ -1,0 +1,367 @@
+# Security Scanning Workflow
+#
+# This workflow performs comprehensive security analysis of your Python codebase and dependencies.
+# It combines multiple security tools to provide thorough coverage of potential vulnerabilities.
+#
+# Security Tools Included:
+# - Bandit: Scans Python code for common security issues and vulnerabilities
+# - Safety: Checks dependencies against known security vulnerability databases
+# - pip-audit: Modern alternative to Safety with additional features
+# - CodeQL: GitHub's semantic code analysis for advanced security detection
+#
+# Features:
+# - Automated vulnerability detection in code and dependencies
+# - Integration with GitHub Security Advisory Database
+# - SARIF report generation for GitHub Security tab
+# - Scheduled weekly scans for continuous monitoring
+# - Artifact preservation for audit trails
+#
+# Customization Options:
+# - Adjust scan frequency via cron schedule
+# - Configure tool-specific rules and exclusions
+# - Add additional security tools (semgrep, sonarqube, etc.)
+# - Customize severity thresholds and failure conditions
+#
+# Required Secrets: None (uses default GITHUB_TOKEN)
+# Required Permissions: security-events:write for CodeQL integration
+
+name: Security Scanning
+
+# Workflow Triggers
+on:
+  push:
+    branches: [ main, master ]  # Scan on pushes to main branches
+  pull_request:
+    branches: [ main, master ]  # Scan PRs before merge
+  schedule:
+    # Run weekly security scans on Sundays at 2 AM UTC
+    # Adjust timing based on your team's schedule and time zone
+    - cron: '0 2 * * 0'
+  # Uncomment to enable manual triggering
+  # workflow_dispatch:
+  # Uncomment to scan only when security-relevant files change
+  # paths:
+  #   - '**.py'
+  #   - 'requirements*.txt'
+  #   - 'pyproject.toml'
+  #   - 'setup.py'
+
+jobs:
+  security-scan:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    
+    # Required permissions for security scanning
+    permissions:
+      actions: read           # Required to read workflow artifacts
+      contents: read          # Required to read repository contents
+      security-events: write  # Required to upload CodeQL results to Security tab
+      # Uncomment if you want to post security findings as PR comments
+      # pull-requests: write
+
+    steps:
+    # Step 1: Checkout Repository Code
+    - name: Checkout code
+      uses: actions/checkout@v4
+      # Uncomment if you need full git history for security analysis
+      # with:
+      #   fetch-depth: 0
+
+    # Step 2: Set Up Python Environment
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'  # Use stable Python version for security tools
+
+    # Step 3: Cache Dependencies
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-security-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml', '**/setup.py') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-security-
+          ${{ runner.os }}-pip-
+
+    # Step 4: Install Security Tools and Dependencies
+    - name: Install dependencies
+      run: |
+        # Upgrade pip for better dependency resolution
+        python -m pip install --upgrade pip
+        
+        # Install security scanning tools with specific versions for consistency
+        echo "Installing security scanning tools..."
+        pip install \
+          "bandit[toml]>=1.7.0" \
+          "safety>=2.3.0" \
+          "pip-audit>=2.6.0"
+        
+        # Install additional security tools (uncomment as needed)
+        # pip install semgrep  # Static analysis tool
+        # pip install cyclonedx-bom  # Software Bill of Materials generation
+        
+        # Install project dependencies for comprehensive analysis
+        # This ensures security tools can analyze the complete dependency tree
+        if [ -f requirements.txt ]; then 
+          echo "Installing project dependencies from requirements.txt"
+          pip install -r requirements.txt
+        fi
+        if [ -f requirements-dev.txt ]; then 
+          echo "Installing development dependencies"
+          pip install -r requirements-dev.txt
+        fi
+        
+        # Install project in development mode for proper analysis
+        if [ -f pyproject.toml ]; then 
+          echo "Installing project in development mode"
+          pip install -e .
+        elif [ -f setup.py ]; then 
+          echo "Installing project in development mode"
+          pip install -e .
+        fi
+        
+        # Display installed tool versions for debugging
+        echo "Security tool versions:"
+        bandit --version
+        safety --version
+        pip-audit --version
+
+    # Step 5: Run Bandit Security Scan
+    # Bandit scans Python code for common security issues and vulnerabilities
+    - name: Run Bandit Security Scan
+      run: |
+        echo "::group::Bandit - Python Code Security Analysis"
+        echo "Scanning Python code for security vulnerabilities with Bandit..."
+        echo "Bandit checks for: hardcoded passwords, SQL injection, shell injection, etc."
+        
+        # Create bandit configuration if it doesn't exist
+        if [ ! -f .bandit ] && [ ! -f bandit.yaml ] && ! grep -q "tool.bandit" pyproject.toml 2>/dev/null; then
+          echo "Creating basic bandit configuration..."
+          cat > .bandit << EOF
+[bandit]
+exclude_dirs = tests,venv,.venv,env,.env,build,dist
+skips = B101,B601
+EOF
+        fi
+        
+        # Run bandit with JSON output for machine processing
+        echo "Generating JSON report for automated processing..."
+        bandit -r . -f json -o bandit-report.json || true
+        
+        # Run bandit with human-readable output
+        echo "Running Bandit security scan..."
+        bandit -r . \
+          --format=screen \
+          --confidence-level=medium \
+          --severity-level=medium \
+          --verbose || true
+        
+        # Alternative configurations (uncomment as needed):
+        # bandit -r . -ll  # Low confidence and severity
+        # bandit -r . -x tests/  # Exclude tests directory
+        # bandit -r . --skip B101,B601  # Skip specific test IDs
+        
+        echo "✅ Bandit security scan completed"
+        echo "::endgroup::"
+      continue-on-error: true  # Don't fail CI for security findings initially
+
+    # Step 6: Run Safety - Dependency Vulnerability Scan
+    # Safety checks installed packages against known security vulnerability databases
+    - name: Run Safety - Dependency Vulnerability Scan
+      run: |
+        echo "::group::Safety - Dependency Vulnerability Analysis"
+        echo "Scanning dependencies for known security vulnerabilities with Safety..."
+        echo "Safety uses the PyUp.io vulnerability database"
+        
+        # Generate requirements file if it doesn't exist
+        if [ ! -f requirements.txt ]; then
+          echo "Generating requirements.txt for safety scan..."
+          pip freeze > temp-requirements.txt
+        fi
+        
+        # Run safety with JSON output for machine processing
+        echo "Generating JSON report for automated processing..."
+        safety check \
+          --json \
+          --output safety-report.json \
+          --continue-on-error || true
+        
+        # Run safety with human-readable output
+        echo "Running Safety vulnerability scan..."
+        safety check \
+          --short-report \
+          --continue-on-error || true
+        
+        # Alternative configurations (uncomment as needed):
+        # safety check --full-report  # More detailed output
+        # safety check --ignore 12345  # Ignore specific vulnerability ID
+        # safety check -r requirements.txt  # Scan specific requirements file
+        
+        # Clean up temporary file
+        [ -f temp-requirements.txt ] && rm temp-requirements.txt
+        
+        echo "✅ Safety vulnerability scan completed"
+        echo "::endgroup::"
+      continue-on-error: true  # Don't fail CI for vulnerability findings initially
+
+    # Step 7: Run pip-audit - Modern Dependency Scanner
+    # pip-audit is a more modern alternative to Safety with additional features
+    - name: Run pip-audit - Modern Dependency Scanner
+      run: |
+        echo "::group::pip-audit - Advanced Dependency Vulnerability Analysis"
+        echo "Scanning dependencies with pip-audit (modern alternative to Safety)..."
+        echo "pip-audit uses multiple vulnerability databases including OSV and PyPI"
+        
+        # Run pip-audit with JSON output for machine processing
+        echo "Generating JSON report for automated processing..."
+        pip-audit \
+          --format=json \
+          --output=pip-audit-report.json \
+          --progress-spinner=off || true
+        
+        # Run pip-audit with human-readable output
+        echo "Running pip-audit vulnerability scan..."
+        pip-audit \
+          --desc \
+          --progress-spinner=off || true
+        
+        # Alternative configurations (uncomment as needed):
+        # pip-audit --fix  # Attempt to fix vulnerabilities automatically
+        # pip-audit --require-hashes  # Require hash verification
+        # pip-audit --ignore-vuln GHSA-xxxx-xxxx-xxxx  # Ignore specific vulnerability
+        # pip-audit --format=cyclonedx-json  # Generate SBOM in CycloneDX format
+        
+        echo "✅ pip-audit vulnerability scan completed"
+        echo "::endgroup::"
+      continue-on-error: true  # Don't fail CI for vulnerability findings initially
+
+    # Step 8: Initialize CodeQL Analysis
+    # CodeQL performs semantic code analysis to find security vulnerabilities
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: python
+        # Query suites available:
+        # - security-extended: Security queries with higher precision
+        # - security-and-quality: Security + code quality queries
+        # - code-scanning: Default GitHub code scanning queries
+        queries: security-and-quality
+        
+        # Uncomment to use custom queries
+        # queries: ./.github/codeql/custom-queries.ql
+        
+        # Uncomment to specify CodeQL configuration
+        # config-file: ./.github/codeql/codeql-config.yml
+
+    # Step 9: Build Code for Analysis
+    # CodeQL needs to understand the code structure for analysis
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v2
+      # For Python, autobuild typically works well
+      # Uncomment manual build steps if autobuild fails:
+      # - name: Manual build
+      #   run: |
+      #     pip install -e .
+      #     python -m compileall .
+
+    # Step 10: Perform CodeQL Analysis
+    # Executes the semantic analysis and uploads results to GitHub Security tab
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+      with:
+        category: "/language:python"
+        # Uncomment to upload SARIF results as artifacts
+        # upload: false
+        
+        # Uncomment to specify output directory
+        # output: codeql-results
+        
+        # Uncomment to add additional analysis options
+        # ram: 2048  # MB of RAM to use
+        # threads: 2  # Number of threads to use
+
+    # Step 11: Upload Security Scan Artifacts
+    # Preserves security scan reports for audit trails and further analysis
+    - name: Upload Security Scan Artifacts
+      uses: actions/upload-artifact@v3
+      if: always()  # Upload artifacts even if scans found issues
+      with:
+        name: security-scan-reports-${{ github.run_number }}
+        path: |
+          bandit-report.json      # Bandit security findings
+          safety-report.json      # Safety vulnerability findings
+          pip-audit-report.json   # pip-audit vulnerability findings
+          # Uncomment to include additional reports
+          # codeql-results/        # CodeQL analysis results
+          # sbom.json             # Software Bill of Materials
+        retention-days: 90        # Keep security reports longer for compliance
+        if-no-files-found: warn   # Warn if no reports generated
+
+    # Step 12: Generate Security Summary Report
+    # Provides comprehensive summary of all security findings
+    - name: Security Scan Summary
+      if: always()  # Run even if previous steps failed
+      run: |
+        echo "🔒 Security Scanning Summary"
+        echo "=========================="
+        echo ""
+        
+        # Count findings from each tool
+        bandit_issues=0
+        safety_issues=0
+        audit_issues=0
+        
+        if [ -f bandit-report.json ]; then
+          bandit_issues=$(jq '.results | length' bandit-report.json 2>/dev/null || echo "0")
+        fi
+        
+        if [ -f safety-report.json ]; then
+          safety_issues=$(jq '.vulnerabilities | length' safety-report.json 2>/dev/null || echo "0")
+        fi
+        
+        if [ -f pip-audit-report.json ]; then
+          audit_issues=$(jq '.vulnerabilities | length' pip-audit-report.json 2>/dev/null || echo "0")
+        fi
+        
+        echo "📊 Security Scan Results:"
+        echo "  🔍 Bandit (Code Analysis): $bandit_issues potential issues found"
+        echo "  🛡️  Safety (Dependencies): $safety_issues vulnerabilities found"
+        echo "  🔎 pip-audit (Dependencies): $audit_issues vulnerabilities found"
+        echo "  🧠 CodeQL (Semantic Analysis): Results available in Security tab"
+        echo ""
+        
+        # Provide guidance based on findings
+        total_issues=$((bandit_issues + safety_issues + audit_issues))
+        
+        if [ $total_issues -eq 0 ]; then
+          echo "✅ No security issues detected by automated tools!"
+          echo "::notice title=Security Status::All automated security scans passed successfully."
+        else
+          echo "⚠️  Security issues detected - please review the findings"
+          echo "::warning title=Security Findings::$total_issues potential security issues found across all tools."
+        fi
+        
+        echo ""
+        echo "📋 Next Steps:"
+        echo "1. 📁 Download security scan artifacts for detailed analysis"
+        echo "2. 🔍 Review CodeQL results in the Security tab"
+        echo "3. 🛠️  Address high-severity findings first"
+        echo "4. 📚 Consult security documentation for remediation guidance"
+        echo ""
+        echo "🔗 Useful Resources:"
+        echo "  - Bandit documentation: https://bandit.readthedocs.io/"
+        echo "  - Safety documentation: https://pyup.io/safety/"
+        echo "  - pip-audit documentation: https://pypi.org/project/pip-audit/"
+        echo "  - CodeQL documentation: https://codeql.github.com/"
+        echo ""
+        echo "⚙️  Configuration Options:"
+        echo "  - Create .bandit file to customize Bandit rules"
+        echo "  - Use .safety-policy.json for Safety configuration"
+        echo "  - Add .github/codeql/codeql-config.yml for CodeQL customization"
+        echo ""
+        
+        # Set output for potential use in subsequent jobs
+        echo "bandit-issues=$bandit_issues" >> $GITHUB_OUTPUT
+        echo "safety-issues=$safety_issues" >> $GITHUB_OUTPUT
+        echo "audit-issues=$audit_issues" >> $GITHUB_OUTPUT
+        echo "total-issues=$total_issues" >> $GITHUB_OUTPUT

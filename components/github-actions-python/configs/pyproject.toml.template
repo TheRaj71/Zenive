@@ -1,0 +1,307 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{{ project_name }}"
+version = "{{ project_version | default('0.1.0') }}"
+description = "{{ project_description | default('A Python project') }}"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "{{ author_name | default('Your Name') }}", email = "{{ author_email | default('your.email@example.com') }}"}
+]
+maintainers = [
+    {name = "{{ maintainer_name | default('Your Name') }}", email = "{{ maintainer_email | default('your.email@example.com') }}"}
+]
+keywords = [{{ project_keywords | default('[]') | join(', ') }}]
+classifiers = [
+    "Development Status :: {{ development_status | default('3 - Alpha') }}",
+    "Intended Audience :: {{ intended_audience | default('Developers') }}",
+    "License :: OSI Approved :: {{ license_classifier | default('MIT License') }}",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">={{ min_python_version | default('3.8') }}"
+dependencies = [
+    # Add your project dependencies here
+    # Example: "requests>=2.25.0",
+    # Example: "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+
+# Testing dependencies
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-xdist>=3.0.0",  # For parallel testing
+    "pytest-benchmark>=4.0.0",  # For performance testing
+    "coverage[toml]>=7.0.0",
+]
+
+# Documentation dependencies
+docs = [
+    "sphinx>=6.0.0",
+    "sphinx-rtd-theme>=1.2.0",
+    "sphinx-autodoc-typehints>=1.22.0",
+    "myst-parser>=1.0.0",  # For Markdown support in Sphinx
+]
+
+# Linting and formatting dependencies
+lint = [
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "flake8-docstrings>=1.7.0",
+    "flake8-import-order>=0.18.0",
+    "pylint>=2.17.0",
+    "mypy>=1.0.0",
+    "bandit>=1.7.0",
+]
+
+# Security scanning dependencies
+security = [
+    "bandit>=1.7.0",
+    "safety>=2.3.0",
+    "pip-audit>=2.5.0",
+]
+
+# Performance testing dependencies
+performance = [
+    "pytest-benchmark>=4.0.0",
+    "memory-profiler>=0.60.0",
+    "psutil>=5.9.0",
+]
+
+# All development dependencies combined
+all = [
+    "{{ project_name }}[dev,test,docs,lint,security,performance]"
+]
+
+[project.urls]
+Homepage = "{{ project_homepage | default('https://github.com/username/project') }}"
+Documentation = "{{ project_docs_url | default('https://project.readthedocs.io/') }}"
+Repository = "{{ project_repository | default('https://github.com/username/project') }}"
+"Bug Tracker" = "{{ project_issues_url | default('https://github.com/username/project/issues') }}"
+Changelog = "{{ project_changelog_url | default('https://github.com/username/project/blob/main/CHANGELOG.md') }}"
+
+[project.scripts]
+# Define command-line scripts here
+# Example: project-cli = "project.cli:main"
+
+[project.gui-scripts]
+# Define GUI scripts here if applicable
+
+[project.entry-points]
+# Define entry points for plugins or extensions
+
+# Tool configuration consolidated in pyproject.toml
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.txt", "*.md", "*.yml", "*.yaml", "*.json"]
+
+# Black configuration
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+# isort configuration
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["{{ project_name }}"]
+skip_glob = ["*/migrations/*"]
+
+# pytest configuration
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov={{ project_name }}",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=80",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "performance: marks tests as performance benchmarks",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/virtualenv/*",
+    "*/.venv/*",
+    "*/setup.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+# MyPy configuration
+[tool.mypy]
+python_version = "{{ min_python_version | default('3.8') }}"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# Bandit configuration
+[tool.bandit]
+exclude_dirs = ["tests", "test_*"]
+skips = ["B101", "B601"]  # Skip assert_used and shell_injection_process
+
+# Pylint configuration
+[tool.pylint.messages_control]
+disable = [
+    "C0330",  # Wrong hanging indentation before block (black compatibility)
+    "C0326",  # Bad whitespace (black compatibility)
+]
+
+[tool.pylint.format]
+max-line-length = "88"
+
+[tool.pylint.design]
+max-args = 7
+max-attributes = 10
+max-public-methods = 20
+
+# Flake8 configuration (in setup.cfg or .flake8 file, as flake8 doesn't support pyproject.toml natively)
+# [flake8]
+# max-line-length = 88
+# extend-ignore = E203, W503
+# exclude = .git,__pycache__,docs/source/conf.py,old,build,dist,.venv
+
+# Sphinx configuration helpers
+[tool.sphinx]
+source-dir = "docs"
+build-dir = "docs/_build"
+
+# Pre-commit configuration reference
+# Create .pre-commit-config.yaml with:
+# repos:
+#   - repo: https://github.com/psf/black
+#     rev: 23.3.0
+#     hooks:
+#       - id: black
+#   - repo: https://github.com/pycqa/isort
+#     rev: 5.12.0
+#     hooks:
+#       - id: isort
+#   - repo: https://github.com/pycqa/flake8
+#     rev: 6.0.0
+#     hooks:
+#       - id: flake8
+#   - repo: https://github.com/pre-commit/mirrors-mypy
+#     rev: v1.3.0
+#     hooks:
+#       - id: mypy
+
+# Tox configuration reference (create tox.ini if needed)
+# [tox]
+# envlist = py38,py39,py310,py311,py312,lint,docs
+# isolated_build = true
+#
+# [testenv]
+# deps = .[test]
+# commands = pytest {posargs}
+#
+# [testenv:lint]
+# deps = .[lint]
+# commands =
+#     black --check src tests
+#     isort --check-only src tests
+#     flake8 src tests
+#     mypy src
+#     bandit -r src
+#
+# [testenv:docs]
+# deps = .[docs]
+# commands = sphinx-build -W -b html docs docs/_build/html
+
+# GitHub Actions workflow suggestions:
+# - Use this pyproject.toml with: pip install -e .[dev]
+# - For testing: pip install -e .[test] && pytest
+# - For linting: pip install -e .[lint] && black --check . && isort --check-only . && flake8 . && mypy src
+# - For docs: pip install -e .[docs] && sphinx-build -W -b html docs docs/_build/html
+# - For security: pip install -e .[security] && bandit -r src && safety check

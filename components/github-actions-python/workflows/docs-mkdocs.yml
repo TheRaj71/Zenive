@@ -1,0 +1,292 @@
+name: Build and Deploy MkDocs Documentation
+
+# Triggers for documentation builds
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '*.py'
+      - '**/*.py'
+      - 'pyproject.toml'
+      - 'setup.py'
+      - 'requirements.txt'
+      - 'docs-requirements.txt'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '*.py'
+      - '**/*.py'
+  workflow_dispatch:
+
+# Set permissions for GitHub Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Build documentation job
+  build-docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # Checkout the repository code
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for proper version detection
+    
+    # Set up Python
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    # Install dependencies
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        # Install MkDocs and common plugins
+        pip install mkdocs mkdocs-material mkdocs-autorefs
+        # Install MkDocs plugins for Python documentation
+        pip install mkdocstrings[python] mkdocs-gen-files mkdocs-literate-nav
+        # Install additional useful plugins
+        pip install mkdocs-section-index mkdocs-awesome-pages-plugin
+        # Install documentation-specific requirements if they exist
+        if [ -f docs-requirements.txt ]; then pip install -r docs-requirements.txt; fi
+        if [ -f docs/requirements.txt ]; then pip install -r docs/requirements.txt; fi
+        # Install project dependencies
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        # Install project in development mode for API documentation
+        if [ -f setup.py ]; then pip install -e .; fi
+        if [ -f pyproject.toml ]; then pip install -e .; fi
+    
+    # Initialize MkDocs configuration if mkdocs.yml doesn't exist
+    - name: Initialize MkDocs configuration
+      run: |
+        if [ ! -f mkdocs.yml ]; then
+          echo "Initializing MkDocs configuration..."
+          
+          # Create mkdocs.yml configuration
+          cat > mkdocs.yml << EOF
+site_name: ${GITHUB_REPOSITORY##*/}
+site_description: Documentation for ${GITHUB_REPOSITORY##*/}
+site_url: https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY##*/}
+repo_url: https://github.com/${GITHUB_REPOSITORY}
+repo_name: ${GITHUB_REPOSITORY}
+
+# Theme configuration
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+# Navigation structure
+nav:
+  - Home: index.md
+  - API Reference: reference/
+
+# Plugins configuration
+plugins:
+  - search
+  - autorefs
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_toc_entry: false
+            merge_init_into_class: true
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - section-index
+
+# Markdown extensions
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+# Extra configuration
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/${GITHUB_REPOSITORY}
+EOF
+          
+          # Create docs directory structure
+          mkdir -p docs/reference
+          
+          # Create index.md if it doesn't exist
+          if [ ! -f docs/index.md ]; then
+            cat > docs/index.md << EOF
+# ${GITHUB_REPOSITORY##*/}
+
+Welcome to the documentation for ${GITHUB_REPOSITORY##*/}.
+
+## Overview
+
+This project provides [brief description of your project].
+
+## Installation
+
+\`\`\`bash
+pip install ${GITHUB_REPOSITORY##*/}
+\`\`\`
+
+## Quick Start
+
+\`\`\`python
+# Add a simple usage example here
+import ${GITHUB_REPOSITORY##*/}
+\`\`\`
+
+## API Reference
+
+See the [API Reference](reference/) for detailed documentation of all modules and functions.
+EOF
+          fi
+          
+          # Create reference generation script
+          cat > docs/gen_ref_pages.py << 'EOF'
+"""Generate the code reference pages and navigation."""
+
+from pathlib import Path
+import mkdocs_gen_files
+
+# Find all Python modules
+nav = mkdocs_gen_files.Nav()
+
+for path in sorted(Path(".").rglob("*.py")):
+    # Skip certain directories and files
+    if any(part.startswith(".") or part.startswith("_") for part in path.parts):
+        continue
+    if "test" in str(path).lower() or "example" in str(path).lower():
+        continue
+    if path.name in ["setup.py", "conftest.py"]:
+        continue
+    
+    module_path = path.relative_to(".").with_suffix("")
+    doc_path = path.relative_to(".").with_suffix(".md")
+    full_doc_path = Path("reference", doc_path)
+    
+    parts = tuple(module_path.parts)
+    
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+        doc_path = doc_path.with_name("index.md")
+        full_doc_path = full_doc_path.with_name("index.md")
+    elif parts[-1] == "__main__":
+        continue
+    
+    if not parts:
+        continue
+    
+    nav[parts] = doc_path.as_posix()
+    
+    with mkdocs_gen_files.open(full_doc_path, "w") as fd:
+        ident = ".".join(parts)
+        fd.write(f"::: {ident}")
+    
+    mkdocs_gen_files.set_edit_path(full_doc_path, path)
+
+with mkdocs_gen_files.open("reference/SUMMARY.md", "w") as nav_file:
+    nav_file.writelines(nav.build_literate_nav())
+EOF
+        fi
+    
+    # Validate MkDocs configuration
+    - name: Validate MkDocs configuration
+      run: |
+        # Check if mkdocs.yml is valid
+        python3 -c "import yaml; yaml.safe_load(open('mkdocs.yml'))"
+        echo "MkDocs configuration is valid"
+    
+    # Build MkDocs documentation
+    - name: Build documentation
+      run: |
+        # Build the documentation
+        mkdocs build --strict
+        
+        # Create .nojekyll file for GitHub Pages
+        touch site/.nojekyll
+    
+    # Upload documentation artifacts
+    - name: Upload documentation artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: mkdocs-site
+        path: site/
+        retention-days: 30
+    
+    # Setup Pages (only on main branch)
+    - name: Setup Pages
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: actions/configure-pages@v3
+    
+    # Upload to GitHub Pages (only on main branch)
+    - name: Upload to GitHub Pages
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: site/
+
+  # Deploy to GitHub Pages job (only runs on main branch)
+  deploy-pages:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build-docs
+    
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v2

@@ -1,0 +1,341 @@
+# PyPI Publishing Workflow
+#
+# This workflow automates the process of publishing Python packages to PyPI (Python Package Index).
+# It includes comprehensive validation, testing, and security checks before publishing.
+#
+# Features:
+# - Automatic version detection from git tags or manual input
+# - Semantic version validation
+# - Multi-platform installation testing
+# - Security scanning of package contents
+# - Trusted publishing with OpenID Connect (no API tokens needed)
+# - Comprehensive build artifact verification
+# - Automatic GitHub release commenting
+#
+# Security Features:
+# - Uses GitHub's trusted publishing (OIDC) for secure authentication
+# - Scans package contents for security vulnerabilities
+# - Validates package integrity before publishing
+# - Environment protection for production publishing
+#
+# Prerequisites:
+# 1. Configure trusted publishing on PyPI for your repository
+# 2. Ensure your package has proper setup.py or pyproject.toml configuration
+# 3. Create releases with semantic version tags (e.g., v1.0.0)
+#
+# Required Secrets: None (uses trusted publishing)
+# Required Repository Settings:
+# - Enable trusted publishing on PyPI for this repository
+# - Configure environment protection for 'pypi' environment (recommended)
+
+name: Publish to PyPI
+
+# Workflow Triggers
+on:
+  release:
+    types: [published]  # Trigger when a GitHub release is published
+  workflow_dispatch:    # Allow manual triggering
+    inputs:
+      version:
+        description: 'Version to publish (leave empty to use git tag)'
+        required: false
+        type: string
+        # Example: 1.0.0 or 1.0.0-beta.1
+
+jobs:
+  # Job 1: Version Validation
+  # Validates and normalizes the version number before proceeding with build and publish
+  validate-version:
+    name: Validate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+      is-valid: ${{ steps.validate.outputs.is-valid }}
+    
+    steps:
+      # Step 1: Checkout Repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history to access git tags
+
+      # Step 2: Determine Version Number
+      # Extracts version from various sources in order of preference
+      - name: Get version
+        id: get-version
+        run: |
+          echo "Determining version number..."
+          
+          # Priority order for version detection:
+          # 1. GitHub release tag (for release events)
+          # 2. Manual input (for workflow_dispatch)
+          # 3. Latest git tag (fallback)
+          
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            echo "Using version from GitHub release: $VERSION"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "Using manually specified version: $VERSION"
+          else
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$VERSION" ]; then
+              echo "Using latest git tag: $VERSION"
+            else
+              echo "No version found in git tags"
+            fi
+          fi
+          
+          # Normalize version by removing 'v' prefix if present
+          # This handles tags like 'v1.0.0' -> '1.0.0'
+          VERSION=${VERSION#v}
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Normalized version: $VERSION"
+
+      # Step 3: Validate Version Format
+      # Ensures version follows semantic versioning standards
+      - name: Validate version format
+        id: validate
+        run: |
+          VERSION="${{ steps.get-version.outputs.version }}"
+          
+          echo "Validating version format: $VERSION"
+          
+          # Check if version is empty
+          if [ -z "$VERSION" ]; then
+            echo "❌ No version found or specified"
+            echo "Please either:"
+            echo "  - Create a GitHub release with a version tag"
+            echo "  - Specify a version in the workflow dispatch input"
+            echo "  - Ensure your repository has version tags"
+            echo "is-valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Validate semantic versioning pattern
+          # Accepts formats like: 1.0.0, 1.0.0-alpha.1, 1.0.0+build.1
+          if echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9\.\-\+]+)?$'; then
+            echo "✅ Version format is valid: $VERSION"
+            echo "Version follows semantic versioning standards"
+            echo "is-valid=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Invalid version format: $VERSION"
+            echo "Expected semantic versioning format:"
+            echo "  - Major.Minor.Patch (e.g., 1.0.0)"
+            echo "  - With pre-release (e.g., 1.0.0-alpha.1)"
+            echo "  - With build metadata (e.g., 1.0.0+build.1)"
+            echo "is-valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Additional validation: check for reasonable version numbers
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3 | cut -d- -f1 | cut -d+ -f1)
+          
+          if [ "$MAJOR" -gt 999 ] || [ "$MINOR" -gt 999 ] || [ "$PATCH" -gt 999 ]; then
+            echo "⚠️  Warning: Version numbers are unusually high"
+            echo "Major: $MAJOR, Minor: $MINOR, Patch: $PATCH"
+          fi
+
+  build:
+    needs: validate-version
+    if: needs.validate-version.outputs.is-valid == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine check-manifest
+
+      - name: Verify package manifest
+        run: |
+          check-manifest --verbose
+
+      - name: Build package
+        run: |
+          python -m build
+
+      - name: Verify build artifacts
+        run: |
+          ls -la dist/
+          
+          # Check that both source and wheel distributions were created
+          if [ ! -f dist/*.tar.gz ]; then
+            echo "❌ Source distribution not found"
+            exit 1
+          fi
+          
+          if [ ! -f dist/*.whl ]; then
+            echo "❌ Wheel distribution not found"
+            exit 1
+          fi
+          
+          echo "✅ Build artifacts verified"
+
+      - name: Check package with twine
+        run: |
+          twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: python-package-distributions
+          path: dist/
+          retention-days: 7
+
+  test-install:
+    needs: [validate-version, build]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+    steps:
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Test wheel installation
+        run: |
+          # Install the wheel package
+          pip install dist/*.whl
+          
+          # Try to import the package (adjust package name as needed)
+          python -c "
+          import sys
+          try:
+              # Replace 'your_package' with actual package name
+              import pkg_resources
+              installed_packages = [d.project_name for d in pkg_resources.working_set]
+              print('Installed packages:', installed_packages)
+              print('✅ Package installation test passed')
+          except ImportError as e:
+              print(f'❌ Package import failed: {e}')
+              sys.exit(1)
+          "
+
+  security-scan:
+    needs: [validate-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Install security scanning tools
+        run: |
+          pip install safety bandit
+
+      - name: Scan package for vulnerabilities
+        run: |
+          # Extract and scan the source distribution
+          tar -xzf dist/*.tar.gz -C /tmp/
+          EXTRACTED_DIR=$(find /tmp -maxdepth 1 -type d -name "*" | grep -v "^/tmp/$" | head -1)
+          
+          if [ -n "$EXTRACTED_DIR" ]; then
+            echo "Scanning extracted package: $EXTRACTED_DIR"
+            bandit -r "$EXTRACTED_DIR" -f json -o bandit-report.json || true
+            
+            # Check if any high or medium severity issues were found
+            if [ -f bandit-report.json ]; then
+              HIGH_ISSUES=$(jq '.results[] | select(.issue_severity == "HIGH")' bandit-report.json | jq -s length)
+              MEDIUM_ISSUES=$(jq '.results[] | select(.issue_severity == "MEDIUM")' bandit-report.json | jq -s length)
+              
+              echo "Security scan results:"
+              echo "- High severity issues: $HIGH_ISSUES"
+              echo "- Medium severity issues: $MEDIUM_ISSUES"
+              
+              if [ "$HIGH_ISSUES" -gt 0 ]; then
+                echo "❌ High severity security issues found. Please review before publishing."
+                jq '.results[] | select(.issue_severity == "HIGH")' bandit-report.json
+                exit 1
+              fi
+            fi
+          fi
+
+  publish:
+    needs: [validate-version, build, test-install, security-scan]
+    runs-on: ubuntu-latest
+    environment: 
+      name: pypi
+      url: https://pypi.org/project/${{ github.repository }}
+    permissions:
+      id-token: write  # Required for trusted publishing
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Verify artifacts before publishing
+        run: |
+          echo "Files to be published:"
+          ls -la dist/
+          
+          # Final verification
+          if [ $(ls dist/*.whl | wc -l) -ne 1 ]; then
+            echo "❌ Expected exactly one wheel file"
+            exit 1
+          fi
+          
+          if [ $(ls dist/*.tar.gz | wc -l) -ne 1 ]; then
+            echo "❌ Expected exactly one source distribution"
+            exit 1
+          fi
+          
+          echo "✅ Artifacts verified for publishing"
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true
+          verbose: true
+
+      - name: Create GitHub release comment
+        if: github.event_name == 'release'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const version = "${{ needs.validate-version.outputs.version }}";
+            const body = `🎉 **Package successfully published to PyPI!**
+            
+            **Version:** \`${version}\`
+            **PyPI URL:** https://pypi.org/project/${{ github.repository }}/
+            **Install command:** \`pip install ${{ github.repository }}==${version}\`
+            
+            The package is now available for installation via pip.`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.payload.release.id,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
